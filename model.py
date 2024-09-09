@@ -4,79 +4,73 @@ import torch.nn.functional as F
 import math
 
 
-class TidalAttention(nn.Module):
-    def __init__(self, config):
+class MultiHeadAttention(nn.Module):
+    def __init__(self, d_model, num_heads, dropout=0.1):
         super().__init__()
-        self.num_attention_heads = config.num_attention_heads
-        self.attention_head_size = config.hidden_size // config.num_attention_heads
-        self.all_head_size = self.num_attention_heads * self.attention_head_size
+        assert d_model % num_heads == 0
 
-        self.query = nn.Linear(config.hidden_size, self.all_head_size)
-        self.key = nn.Linear(config.hidden_size, self.all_head_size)
-        self.value = nn.Linear(config.hidden_size, self.all_head_size)
+        self.d_model = d_model
+        self.num_heads = num_heads
+        self.d_k = d_model // num_heads
 
-        self.dropout = nn.Dropout(config.attention_probs_dropout_prob)
+        self.W_q = nn.Linear(d_model, d_model)
+        self.W_k = nn.Linear(d_model, d_model)
+        self.W_v = nn.Linear(d_model, d_model)
+        self.W_o = nn.Linear(d_model, d_model)
 
-    def transpose_for_scores(self, x):
-        new_x_shape = x.size()[:-1] + (self.num_attention_heads, self.attention_head_size)
-        x = x.view(*new_x_shape)
-        return x.permute(0, 2, 1, 3)
+        self.dropout = nn.Dropout(dropout)
 
-    def forward(self, hidden_states, attention_mask=None, direction='left_to_right'):
-        query_layer = self.transpose_for_scores(self.query(hidden_states))
-        key_layer = self.transpose_for_scores(self.key(hidden_states))
-        value_layer = self.transpose_for_scores(self.value(hidden_states))
+    def attention(self, query, key, value, mask=None, alibi=None):
+        d_k = query.shape[-1]
 
-        attention_scores = torch.matmul(query_layer, key_layer.transpose(-1, -2))
-        attention_scores = attention_scores / math.sqrt(self.attention_head_size)
-
-        if attention_mask is not None:
-            attention_scores = attention_scores + attention_mask
-
-        if direction == 'right_to_left':
-            attention_scores = torch.flip(attention_scores, dims=[-1])
+        attention_scores = torch.matmul(query, key.transpose(-2, -1)) / math.sqrt(d_k)
+        if alibi is not None:
+            attention_scores += alibi
+        if mask is not None:
+            attention_scores = attention_scores.masked_fill(mask == 0, -1e9)
 
         attention_probs = F.softmax(attention_scores, dim=-1)
         attention_probs = self.dropout(attention_probs)
 
-        if direction == 'right_to_left':
-            attention_probs = torch.flip(attention_probs, dims=[-1])
+        return torch.matmul(attention_probs, value)
 
-        context_layer = torch.matmul(attention_probs, value_layer)
-        context_layer = context_layer.permute(0, 2, 1, 3).contiguous()
-        new_context_layer_shape = context_layer.size()[:-2] + (self.all_head_size,)
-        context_layer = context_layer.view(*new_context_layer_shape)
+    def forward(self, x, mask=None, alibi=None):
+        batch_size = x.shape[0]
 
-        return context_layer
+        query = self.W_q(x).view(batch_size, -1, self.num_heads, self.d_k).transpose(1, 2)
+        key = self.W_k(x).view(batch_size, -1, self.num_heads, self.d_k).transpose(1, 2)
+        value = self.W_v(x).view(batch_size, -1, self.num_heads, self.d_k).transpose(1, 2)
+
+        x = self.attention(query, key, value, mask, alibi)
+        x = x.transpose(1, 2).contiguous().view(batch_size, -1, self.d_model)
+
+        return x
 
 
-class TidalFeedForward(nn.Module):
-    def __init__(self, config):
+class FeedForward(nn.Module):
+    def __init__(self, d_model, d_ff, dropout=0.1):
         super().__init__()
-        self.dense1 = nn.Linear(config.hidden_size, config.intermediate_size)
-        self.intermediate_act_fn = F.gelu
-        self.dense2 = nn.Linear(config.intermediate_size, config.hidden_size)
-        self.dropout = nn.Dropout(config.hidden_dropout_prob)
+        self.linear1 = nn.Linear(d_model, d_ff)
+        self.linear2 = nn.Linear(d_ff, d_model)
+        self.dropout = nn.Dropout(dropout)
 
-    def forward(self, hidden_states):
-        hidden_states = self.dense1(hidden_states)
-        hidden_states = self.intermediate_act_fn(hidden_states)
-        hidden_states = self.dense2(hidden_states)
-        hidden_states = self.dropout(hidden_states)
-        return hidden_states
+    def forward(self, x):
+        x = self.dropout(F.gelu(self.linear1(x)))
+        x = self.linear2(x)
+        return x
 
 
-class TidalTransformerBlock(nn.Module):
-    def __init__(self, config):
+class TransformerBlock(nn.Module):
+    def __init__(self, d_model, num_heads, d_ff, dropout=0.1):
         super().__init__()
-        self.attention = TidalAttention(config)
-        self.intermediate = TidalFeedForward(config)
-        self.layernorm1 = nn.LayerNorm(config.hidden_size, eps=config.layer_norm_eps)
-        self.layernorm2 = nn.LayerNorm(config.hidden_size, eps=config.layer_norm_eps)
-        self.dropout = nn.Dropout(config.hidden_dropout_prob)
+        self.attention = MultiHeadAttention(d_model, num_heads, dropout)
+        self.intermediate = FeedForward(d_model, d_ff, dropout)
+        self.layernorm1 = nn.LayerNorm(d_model)
+        self.layernorm2 = nn.LayerNorm(d_model)
+        self.dropout = nn.Dropout(dropout)
 
-    def forward(self, hidden_states, attention_mask=None, direction='left_to_right'):
-        attention_output = self.attention(hidden_states, attention_mask, direction)
+    def forward(self, hidden_states, attention_mask=None, alibi=None):
+        attention_output = self.attention(hidden_states, attention_mask, alibi)
         attention_output = self.dropout(attention_output)
         hidden_states = self.layernorm1(hidden_states + attention_output)
 
@@ -87,69 +81,95 @@ class TidalTransformerBlock(nn.Module):
         return layer_output
 
 
-class TidalEmbeddings(nn.Module):
-    def __init__(self, config):
-        super().__init__()
-        self.word_embeddings = nn.Embedding(config.vocab_size, config.hidden_size, padding_idx=config.pad_token_id)
-        self.position_embeddings = nn.Embedding(config.max_position_embeddings, config.hidden_size)
-        self.block_embeddings = nn.Embedding(config.num_blocks, config.hidden_size)
-        self.layernorm = nn.LayerNorm(config.hidden_size, eps=config.layer_norm_eps)
-        self.dropout = nn.Dropout(config.hidden_dropout_prob)
-
-    def forward(self, input_ids, block_ids):
-        seq_length = input_ids.size(1)
-        position_ids = torch.arange(seq_length, dtype=torch.long, device=input_ids.device)
-        position_ids = position_ids.unsqueeze(0).expand_as(input_ids)
-
-        word_embeddings = self.word_embeddings(input_ids)
-        position_embeddings = self.position_embeddings(position_ids)
-        block_embeddings = self.block_embeddings(block_ids)
-
-        embeddings = word_embeddings + position_embeddings + block_embeddings
-        embeddings = self.layernorm(embeddings)
-        embeddings = self.dropout(embeddings)
-        return embeddings
-
-
 class TidalTransformer(nn.Module):
-    def __init__(self, config):
+    def __init__(self, vocab_size, d_model, num_heads, num_layers, d_ff, max_seq_length, dropout=0.1):
         super().__init__()
-        self.config = config
-        self.embeddings = TidalEmbeddings(config)
-        self.blocks = nn.ModuleList([TidalTransformerBlock(config) for _ in range(config.num_blocks)])
-        self.pooler = nn.Linear(config.hidden_size, config.hidden_size)
-        self.pooler_activation = nn.Tanh()
-        self.init_weights()
+        self.d_model = d_model
+        self.num_heads = num_heads
+        self.embedding = nn.Embedding(vocab_size, d_model)
+        self.positional_encoding = self.create_alibi_bias(max_seq_length, num_heads)
+        self.layers = nn.ModuleList([TransformerBlock(d_model, num_heads, d_ff, dropout) for _ in range(num_layers)])
+        self.fc = nn.Linear(d_model, vocab_size)
+        self.dropout = nn.Dropout(dropout)
 
-    def init_weights(self):
-        self.apply(self._init_weights)
+    def create_alibi_bias(self, max_seq_length, num_heads):
+        slopes = torch.Tensor([2 ** (-8 * i / num_heads) for i in range(num_heads)])
+        alibi = slopes.unsqueeze(1).unsqueeze(1) * torch.arange(max_seq_length).unsqueeze(0).unsqueeze(0).expand(
+            num_heads, -1, -1)
+        alibi = alibi.view(1, num_heads, 1, max_seq_length)
+        return alibi
 
-    def _init_weights(self, module):
-        if isinstance(module, (nn.Linear, nn.Embedding)):
-            module.weight.data.normal_(mean=0.0, std=self.config.initializer_range)
-        if isinstance(module, nn.Linear) and module.bias is not None:
-            module.bias.data.zero_()
+    def forward(self, x, attention_mask=None):
+        seq_length = x.size(1)
+        batch_size = x.size(0)
 
-    def forward(self, input_ids, block_ids, attention_mask=None):
-        if attention_mask is None:
-            attention_mask = torch.ones_like(input_ids)
+        # Embedding
+        x = self.embedding(x) * math.sqrt(self.d_model)
+        x = self.dropout(x)
 
-        extended_attention_mask = attention_mask.unsqueeze(1).unsqueeze(2)
-        extended_attention_mask = extended_attention_mask.to(dtype=next(self.parameters()).dtype)
-        extended_attention_mask = (1.0 - extended_attention_mask) * -10000.0
+        # Add ALIBI positional encoding
+        alibi = self.positional_encoding[:, :, :, :seq_length].expand(batch_size, -1, seq_length, -1).to(x.device)
 
-        embedding_output = self.embeddings(input_ids, block_ids)
-        hidden_states = embedding_output
+        # Process through transformer blocks
+        for layer in self.layers:
+            x = layer(x, attention_mask)
 
-        for i, block in enumerate(self.blocks):
-            # 块间从左到右
-            hidden_states = block(hidden_states, extended_attention_mask, direction='left_to_right')
+        # Output layer
+        output = self.fc(x)
+        return output
 
-            # 块内从右到左
-            hidden_states = torch.flip(hidden_states, dims=[1])
-            hidden_states = block(hidden_states, torch.flip(extended_attention_mask, dims=[3]),
-                                  direction='right_to_left')
-            hidden_states = torch.flip(hidden_states, dims=[1])
 
-        pooled_output = self.pooler_activation(self.pooler(hidden_states[:, 0]))
-        return hidden_states, pooled_output
+def create_block_attention_mask(seq_length, block_size):
+    mask = torch.ones(seq_length, seq_length)
+    for i in range(0, seq_length, block_size):
+        end = min(i + block_size, seq_length)
+        mask[i:end, i:end] = torch.tril(torch.ones(end - i, end - i))
+    return mask
+
+
+def process_input(text, tokenizer, block_size):
+    tokens = tokenizer.encode(text)
+    processed_tokens = []
+    for i in range(0, len(tokens), block_size):
+        block = tokens[i:i + block_size]
+        if i > 0:
+            processed_tokens.extend([tokenizer.bob_token_id])
+            processed_tokens.extend(block[::-1])  # Reverse the block
+            processed_tokens.extend([tokenizer.eob_token_id])
+        else:
+            processed_tokens.extend(block)
+    return torch.tensor(processed_tokens).unsqueeze(0)
+
+
+# Usage example
+vocab_size = 30000  # Example vocabulary size
+d_model = 512
+num_heads = 8
+num_layers = 6
+d_ff = 2048
+max_seq_length = 1024
+dropout = 0.1
+
+model = TidalTransformer(vocab_size, d_model, num_heads, num_layers, d_ff, max_seq_length, dropout)
+
+
+# Example input processing and forward pass
+# Note: You would need to implement or use an actual tokenizer
+class DummyTokenizer:
+    def __init__(self):
+        self.bob_token_id = 1  # Example token ID for <bob>
+        self.eob_token_id = 2  # Example token ID for <eob>
+
+    def encode(self, text):
+        # This is a dummy implementation. Replace with actual tokenization logic.
+        return [ord(c) for c in text]
+
+
+tokenizer = DummyTokenizer()
+input_text = "Math Equation"
+block_size = 4
+input_ids = process_input(input_text, tokenizer, block_size)
+attention_mask = create_block_attention_mask(input_ids.size(1), block_size)
+
+output = model(input_ids, attention_mask)
+print(output.shape)  # Should print: torch.Size([1, seq_length, vocab_size])
