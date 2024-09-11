@@ -6,9 +6,10 @@ import math
 def generate_alibi_distance_matrix(seq_length, bob_idx):
     # distances = np.array(
     #     [(i - bob_idx) if i >= bob_idx else seq_length - bob_idx - 1 + abs(i - bob_idx) for i in range(seq_length)])
-    # downscale to 1/4 > bob_idx
-    distances = np.array([(i - bob_idx) / 4 if i >= bob_idx else
-                          (seq_length - bob_idx) / 4 - 1 + abs(i - bob_idx) for i in range(seq_length)])
+    # print(distances[:, np.newaxis] - distances)
+    # downscale with sqrt
+    distances = np.array([np.sqrt(i - bob_idx) if i >= bob_idx else
+                          np.sqrt(seq_length - bob_idx) - 1 + abs(i - bob_idx) for i in range(seq_length)])
     return distances[:, np.newaxis] - distances
 
 
@@ -42,7 +43,7 @@ def build_alibi_tensor(attention_mask: torch.Tensor, num_heads: int, bob_idx: in
 
 def test():
     # 示例使用
-    seq_length = 8  # 总序列长度
+    seq_length = 20  # 总序列长度
     bob_idx = 5  # <bob>的位置（从0开始计数）
     num_heads = 8  # 注意力头的数量
     batch_size = 2  # 批次大小

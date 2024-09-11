@@ -10,8 +10,9 @@ from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.utils.data import DistributedSampler, DataLoader
 
 from config import TidalConfig
-from dataset import TidalDataset
+from data.prepare_text import TextDataset
 from model import TidalTransformer
+from tokenizer import MixedTokenizer
 
 os.environ['CUDA_VISIBLE_DEVICES'] = '0'
 
@@ -52,11 +53,11 @@ def get_lr(it, learning_rate):
     return min_lr + coeff * (learning_rate - min_lr)
 
 
-def train_epoch(epoch, cfg: TidalConfig):
+def train_epoch(data_loader, epoch, cfg: TidalConfig):
     start_time = time.time()
-    for step, (x, y) in enumerate(train_loader):
-        x = x.to(device)
-        y = y.to(device)
+    for step, (X, Y) in enumerate(data_loader):
+        X = X.to(device)
+        Y = Y.to(device)
         lr = get_lr(epoch * iter_per_epoch + step, cfg.learning_rate) if decay_lr else cfg.learning_rate
         for param_group in optimizer.param_groups:
             param_group['lr'] = lr
@@ -69,7 +70,7 @@ def train_epoch(epoch, cfg: TidalConfig):
             # looking at the source of that context manager, it just toggles this variable
             model.require_backward_grad_sync = 0 == gradient_accumulation_steps - 1
         with ctx:
-            logits = model(x, y)
+            logits = model(X, Y)
             loss = raw_model.last_loss
             loss = loss / gradient_accumulation_steps
         # immediately async prefetch next batch while model is doing the forward pass on the GPU
@@ -148,11 +149,12 @@ def init_model(model_args=None):
 
 # I/O
 if __name__ == "__main__":
+    tokenizer = MixedTokenizer()
     tmp_model_args = dict(
         hidden_size=768,
         num_heads=12,
         num_layers=12,
-        vocab_size=-1,
+        vocab_size=tokenizer.vocab_size,
         max_seq_len=128,
         dropout=0,  # for pretraining 0 is good, for finetuning try 0.1+
         # training params
@@ -244,14 +246,14 @@ if __name__ == "__main__":
         if device_type == "cpu"
         else torch.amp.autocast('cuda')
     )
-    
+
     best_val_loss = 1e9
     # init dataloader
     data_path_list = [
-        './data/pretrain_data.bin'
+        './data/arithmetic_training_data.jsonl'
     ]
-    train_ds = TidalDataset(data_path_list, max_length=tidal_cfg.max_seq_len, memmap=True)
-    train_sampler = DistributedSampler(train_ds)
+    train_ds = TextDataset(data_path_list, tokenizer, max_seq_len=tidal_cfg.max_seq_len)
+    # train_sampler = DistributedSampler(train_ds)
     train_loader = DataLoader(
         train_ds,
         batch_size=tidal_cfg.batch_size,
@@ -259,7 +261,7 @@ if __name__ == "__main__":
         drop_last=False,
         shuffle=False,
         num_workers=0 if os.name == 'nt' else 4,
-        sampler=train_sampler
+        # sampler=train_sampler
     )
     # init model
     model = init_model(model_args=tmp_model_args)
@@ -280,12 +282,12 @@ if __name__ == "__main__":
         prefix = "_orig_mod." if compile else ""
         model._ddp_params_and_buffers_to_ignore = {prefix + "freqs_cis"}
         model = DDP(model, device_ids=[ddp_local_rank])
-        
+
     raw_model = model.module if ddp else model  # unwrap DDP container if needed
     # training loop
     iter_per_epoch = len(train_loader)
     for ep in range(tidal_cfg.num_epochs):
-        train_epoch(ep, tidal_cfg)
+        train_epoch(train_loader, ep, tidal_cfg)
         if ddp:
             if torch.distributed.get_rank() == 0:  # usually 0 or any rank to save
                 torch.save(raw_model.state_dict(), '{}/epoch_{}.pth'.format(save_dir, ep))

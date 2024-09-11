@@ -1,37 +1,46 @@
-import math
-
 import torch
-from transformers.models.bloom.modeling_flax_bloom import build_alibi_tensor
+import numpy as np
 
 
+class PretrainDataset:
+    def __init__(self, data):
+        self.data = data
 
-def generate_alibi_bias(batch_size, seq_length, num_heads, dtype=torch.float32):
-    """
-    Generate ALiBi bias tensor using transformers implementation.
+    def __len__(self):
+        return len(self.data)
 
-    Args:
-    batch_size (int): Batch size
-    seq_length (int): Sequence length
-    num_heads (int): Number of attention heads
-    dtype (torch.dtype): Data type of the output tensor
+    def __getitem__(self, index: int):
+        sample = self.data[index]
+        X = np.array(sample[:-1]).astype(np.int64)
+        y = np.array(sample[1:]).astype(np.int64)
 
-    Returns:
-    torch.Tensor: ALiBi bias tensor
-    """
-    # 创建一个全为1的attention mask
-    attention_mask = torch.ones(batch_size, seq_length, dtype=dtype)
-
-    # 调用build_alibi_tensor函数
-    alibi = build_alibi_tensor(attention_mask, num_heads, dtype=dtype)
-
-    return alibi
+        return torch.from_numpy(X), torch.from_numpy(y)
 
 
-# 使用示例
-batch_size = 2
-seq_length = 10
-num_heads = 8
+# 示例用法
+if __name__ == "__main__":
+    # 假设我们有一些预处理好的数据
+    sample_data = [
+        [1, 2, 3, 4, 5],
+        [10, 20, 30, 40, 50],
+        [100, 200, 300, 400, 500]
+    ]
 
-alibi_bias = generate_alibi_bias(batch_size, seq_length, num_heads)
-print(f"ALiBi bias shape: {alibi_bias.shape}")
-print(f"ALiBi bias (partial):\n{alibi_bias}")
+    # 创建数据集实例
+    dataset = PretrainDataset(sample_data)
+
+    # 获取数据集的长度
+    print(f"Dataset length: {len(dataset)}")
+
+    # 使用__getitem__方法获取一个样本
+    index = 1  # 我们将获取第二个样本
+    X, y = dataset[index]
+
+    print(f"Input index: {index}")
+    print(f"X (input sequence): {X}")
+    print(f"y (target sequence): {y}")
+
+    # 展示X和y的关系
+    print("\nRelationship between X and y:")
+    for i in range(len(X)):
+        print(f"X[{i}] = {X[i]}, y[{i}] = {y[i]}")

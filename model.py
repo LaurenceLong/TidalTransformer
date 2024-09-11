@@ -1,4 +1,5 @@
 import inspect
+from typing import Optional
 
 import torch
 import torch.nn as nn
@@ -98,9 +99,9 @@ class TidalTransformer(nn.Module):
         self.fc = nn.Linear(cfg.hidden_size, cfg.vocab_size)
         self.dropout = nn.Dropout(cfg.dropout)
 
-    def forward(self, x, attention_mask=None):
+    def forward(self, tokens: torch.Tensor, attention_mask: torch.Tensor):
         # Embedding
-        x = self.embedding(x) * math.sqrt(self.hidden_size)
+        x = self.embedding(tokens) * math.sqrt(self.hidden_size)
         x = self.dropout(x)
 
         # Add ALIBI positional encoding
