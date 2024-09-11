@@ -1,22 +1,27 @@
+import inspect
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import math
 
+from config import TidalConfig
+from positional_encoding import build_alibi_tensor
+
 
 class MultiHeadAttention(nn.Module):
-    def __init__(self, d_model, num_heads, dropout=0.1):
+    def __init__(self, hidden_size, num_heads, dropout=0.1):
         super().__init__()
-        assert d_model % num_heads == 0
+        assert hidden_size % num_heads == 0
 
-        self.d_model = d_model
+        self.hidden_size = hidden_size
         self.num_heads = num_heads
-        self.d_k = d_model // num_heads
+        self.d_k = hidden_size // num_heads
 
-        self.W_q = nn.Linear(d_model, d_model)
-        self.W_k = nn.Linear(d_model, d_model)
-        self.W_v = nn.Linear(d_model, d_model)
-        self.W_o = nn.Linear(d_model, d_model)
+        self.W_q = nn.Linear(hidden_size, hidden_size)
+        self.W_k = nn.Linear(hidden_size, hidden_size)
+        self.W_v = nn.Linear(hidden_size, hidden_size)
+        self.W_o = nn.Linear(hidden_size, hidden_size)
 
         self.dropout = nn.Dropout(dropout)
 
@@ -42,16 +47,16 @@ class MultiHeadAttention(nn.Module):
         value = self.W_v(x).view(batch_size, -1, self.num_heads, self.d_k).transpose(1, 2)
 
         x = self.attention(query, key, value, mask, alibi)
-        x = x.transpose(1, 2).contiguous().view(batch_size, -1, self.d_model)
+        x = x.transpose(1, 2).contiguous().view(batch_size, -1, self.hidden_size)
 
         return x
 
 
 class FeedForward(nn.Module):
-    def __init__(self, d_model, d_ff, dropout=0.1):
+    def __init__(self, hidden_size, d_ff, dropout=0.1):
         super().__init__()
-        self.linear1 = nn.Linear(d_model, d_ff)
-        self.linear2 = nn.Linear(d_ff, d_model)
+        self.linear1 = nn.Linear(hidden_size, d_ff)
+        self.linear2 = nn.Linear(d_ff, hidden_size)
         self.dropout = nn.Dropout(dropout)
 
     def forward(self, x):
@@ -61,12 +66,12 @@ class FeedForward(nn.Module):
 
 
 class TransformerBlock(nn.Module):
-    def __init__(self, d_model, num_heads, d_ff, dropout=0.1):
+    def __init__(self, hidden_size, num_heads, d_ff, dropout=0.1):
         super().__init__()
-        self.attention = MultiHeadAttention(d_model, num_heads, dropout)
-        self.intermediate = FeedForward(d_model, d_ff, dropout)
-        self.layernorm1 = nn.LayerNorm(d_model)
-        self.layernorm2 = nn.LayerNorm(d_model)
+        self.attention = MultiHeadAttention(hidden_size, num_heads, dropout)
+        self.intermediate = FeedForward(hidden_size, d_ff, dropout)
+        self.layernorm1 = nn.LayerNorm(hidden_size)
+        self.layernorm2 = nn.LayerNorm(hidden_size)
         self.dropout = nn.Dropout(dropout)
 
     def forward(self, hidden_states, attention_mask=None, alibi=None):
@@ -82,41 +87,58 @@ class TransformerBlock(nn.Module):
 
 
 class TidalTransformer(nn.Module):
-    def __init__(self, vocab_size, d_model, num_heads, num_layers, d_ff, max_seq_length, dropout=0.1):
+    def __init__(self, cfg: TidalConfig):
         super().__init__()
-        self.d_model = d_model
-        self.num_heads = num_heads
-        self.embedding = nn.Embedding(vocab_size, d_model)
-        self.positional_encoding = self.create_alibi_bias(max_seq_length, num_heads)
-        self.layers = nn.ModuleList([TransformerBlock(d_model, num_heads, d_ff, dropout) for _ in range(num_layers)])
-        self.fc = nn.Linear(d_model, vocab_size)
-        self.dropout = nn.Dropout(dropout)
-
-    def create_alibi_bias(self, max_seq_length, num_heads):
-        slopes = torch.Tensor([2 ** (-8 * i / num_heads) for i in range(num_heads)])
-        alibi = slopes.unsqueeze(1).unsqueeze(1) * torch.arange(max_seq_length).unsqueeze(0).unsqueeze(0).expand(
-            num_heads, -1, -1)
-        alibi = alibi.view(1, num_heads, 1, max_seq_length)
-        return alibi
+        self.hidden_size = cfg.hidden_size
+        self.num_heads = cfg.num_heads
+        self.embedding = nn.Embedding(cfg.vocab_size, cfg.hidden_size)
+        self.layers = nn.ModuleList(
+            [TransformerBlock(cfg.hidden_size, cfg.num_heads, cfg.hidden_size * 4, cfg.dropout) for _ in range(cfg.num_layers)]
+        )
+        self.fc = nn.Linear(cfg.hidden_size, cfg.vocab_size)
+        self.dropout = nn.Dropout(cfg.dropout)
 
     def forward(self, x, attention_mask=None):
-        seq_length = x.size(1)
-        batch_size = x.size(0)
-
         # Embedding
-        x = self.embedding(x) * math.sqrt(self.d_model)
+        x = self.embedding(x) * math.sqrt(self.hidden_size)
         x = self.dropout(x)
 
         # Add ALIBI positional encoding
-        alibi = self.positional_encoding[:, :, :, :seq_length].expand(batch_size, -1, seq_length, -1).to(x.device)
+        alibi = build_alibi_tensor(attention_mask, self.num_heads, None, x.dtype)
 
         # Process through transformer blocks
         for layer in self.layers:
-            x = layer(x, attention_mask)
+            x = layer(x, attention_mask, alibi)
 
         # Output layer
         output = self.fc(x)
         return output
+
+    def configure_optimizers(self, weight_decay, learning_rate, betas, device_type):
+        # start with all the candidate parameters
+        param_dict = {pn: p for pn, p in self.named_parameters()}
+        # filter out those that do not require grad
+        param_dict = {pn: p for pn, p in param_dict.items() if p.requires_grad}
+        # create optim groups. Any parameters that is 2D will be weight decayed, otherwise no.
+        # i.e. all weight tensors in matmuls + embeddings decay, all biases and layernorms don't.
+        decay_params = [p for n, p in param_dict.items() if p.dim() >= 2]
+        nodecay_params = [p for n, p in param_dict.items() if p.dim() < 2]
+        optim_groups = [
+            {'params': decay_params, 'weight_decay': weight_decay},
+            {'params': nodecay_params, 'weight_decay': 0.0}
+        ]
+        num_decay_params = sum(p.numel() for p in decay_params)
+        num_nodecay_params = sum(p.numel() for p in nodecay_params)
+        print(f"num decayed parameter tensors: {len(decay_params)}, with {num_decay_params:,} parameters")
+        print(f"num non-decayed parameter tensors: {len(nodecay_params)}, with {num_nodecay_params:,} parameters")
+        # Create AdamW optimizer and use the fused version if it is available
+        fused_available = 'fused' in inspect.signature(torch.optim.AdamW).parameters
+        use_fused = fused_available and device_type == 'cuda'
+        extra_args = dict(fused=True) if use_fused else dict()
+        optimizer = torch.optim.AdamW(optim_groups, lr=learning_rate, betas=betas, **extra_args)
+        print(f"using fused AdamW: {use_fused}")
+
+        return optimizer
 
 
 def create_block_attention_mask(seq_length, block_size):
@@ -139,37 +161,3 @@ def process_input(text, tokenizer, block_size):
         else:
             processed_tokens.extend(block)
     return torch.tensor(processed_tokens).unsqueeze(0)
-
-
-# Usage example
-vocab_size = 30000  # Example vocabulary size
-d_model = 512
-num_heads = 8
-num_layers = 6
-d_ff = 2048
-max_seq_length = 1024
-dropout = 0.1
-
-model = TidalTransformer(vocab_size, d_model, num_heads, num_layers, d_ff, max_seq_length, dropout)
-
-
-# Example input processing and forward pass
-# Note: You would need to implement or use an actual tokenizer
-class DummyTokenizer:
-    def __init__(self):
-        self.bob_token_id = 1  # Example token ID for <bob>
-        self.eob_token_id = 2  # Example token ID for <eob>
-
-    def encode(self, text):
-        # This is a dummy implementation. Replace with actual tokenization logic.
-        return [ord(c) for c in text]
-
-
-tokenizer = DummyTokenizer()
-input_text = "Math Equation"
-block_size = 4
-input_ids = process_input(input_text, tokenizer, block_size)
-attention_mask = create_block_attention_mask(input_ids.size(1), block_size)
-
-output = model(input_ids, attention_mask)
-print(output.shape)  # Should print: torch.Size([1, seq_length, vocab_size])

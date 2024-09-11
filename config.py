@@ -1,11 +1,22 @@
+from dataclasses import dataclass
+
+
+@dataclass
 class TidalConfig:
-    def __init__(self):
-        self.vocab_size = 30000
-        self.hidden_size = 768
-        self.num_attention_heads = 12
-        self.num_hidden_layers = 12
-        self.max_position_embeddings = 512
-        self.learning_rate = 1e-4
-        self.batch_size = 32
-        self.num_epochs = 10
-        # 其他配置参数...
+    # model params
+    hidden_size: int = 768
+    num_heads: int = 12
+    num_layers: int = 12
+    vocab_size: int = -1
+    max_seq_len: int = 128
+    dropout: float = 0
+    # training params...
+    learning_rate: float = 3e-4
+    weight_decay: float = 1e-1
+    betas: tuple = (0.9, 0.95)
+    batch_size: int = 32
+    num_epochs: int = 10
+    eval_interval: int = 1
+    log_interval: int = 100
+    save_interval: int = 10000
+    eval_iters: int = 200
