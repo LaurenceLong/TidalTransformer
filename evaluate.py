@@ -17,12 +17,14 @@ def generate_text(model, tokenizer, prompt, max_new_tokens):
     model.eval()
 
     input_ids = torch.tensor(tokenizer.encode(prompt)).to(device)
-    start_pos = input_ids.size(0) - 1
+    start_pos = input_ids.size(0)
+    print(3333, input_ids, start_pos)
 
     generated = model.generate(input_ids, start_pos, max_new_tokens, tokenizer.eob_token_id)
-    print(1111, generated)
-
-    return tokenizer.decode(generated[0])
+    print(4444, generated)
+    old = tokenizer.decode(generated[0][:start_pos])
+    new = tokenizer.u8_decode(generated[0][start_pos:])[::-1]
+    return old + new
 
 
 if __name__ == "__main__":
@@ -38,6 +40,6 @@ if __name__ == "__main__":
     model.load_state_dict(torch.load('best_model.pth'))
     print_model_parameters(model)
     # 生成文本示例
-    prompt = "1 + 1001 ="
+    prompt = "5320 + 1926 ="
     generated_text = generate_text(model, tokenizer, prompt, max_new_tokens=50)
     print(f"Generated text: {generated_text}")

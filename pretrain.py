@@ -1,3 +1,5 @@
+import math
+import os
 from datetime import datetime
 import logging
 
@@ -7,7 +9,7 @@ from torch.utils.data import DataLoader
 from tqdm import tqdm
 from tqdm.contrib.logging import logging_redirect_tqdm
 
-from config import TidalConfig
+from config import TidalConfig, InitFrom
 from data.prepare_text import TidalTextDataset
 from model import TidalTransformer
 from tokenizer import MixedTokenizer
@@ -33,7 +35,7 @@ def get_logger(filename, verbosity=1, name=None):
 
 timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
 log_filename = f"training_{timestamp}.log"
-log = get_logger(log_filename)
+
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -60,10 +62,9 @@ def train(model, train_dataloader, val_dataloader, config):
                 input_ids, start_pos = input_ids.to(device), start_pos.to(device)
 
                 optimizer.zero_grad()
-
                 logits = model(input_ids, start_pos)
-                loss = model.compute_loss(logits, input_ids, start_pos)
 
+                loss = model.compute_loss(logits, input_ids, start_pos)
                 loss.backward()
                 optimizer.step()
 
@@ -110,7 +111,39 @@ def evaluate(model, dataloader, config):
     return total_loss / min(config.eval_iters, len(dataloader))
 
 
+def calculate_perplexity(model, dataloader, config):
+    model.eval()
+    total_loss = 0
+    total_tokens = 0
+
+    with torch.no_grad():
+        for i, batch in enumerate(dataloader):
+            if i >= config.eval_iters:
+                break
+            input_ids, start_pos = batch
+            input_ids, start_pos = input_ids.to(device), start_pos.to(device)
+
+            logits = model(input_ids, start_pos)
+            loss = model.compute_loss(logits, input_ids, start_pos)
+
+            # 计算当前批次中的有效标记数
+            # 假设从 start_pos 开始到倒数第二个位置都是有效的预测位置
+            batch_size = input_ids.size(0)
+            seq_len = input_ids.size(1)
+            valid_tokens = ((torch.arange(seq_len, device=device).unsqueeze(0) >= start_pos.unsqueeze(1)) &
+                            (torch.arange(seq_len, device=device).unsqueeze(0) < seq_len - 1)).sum()
+
+            total_loss += loss.item() * valid_tokens
+            total_tokens += valid_tokens
+
+    avg_loss = total_loss / total_tokens
+    perplexity = math.exp(avg_loss)
+
+    return perplexity
+
+
 if __name__ == "__main__":
+    log = get_logger(log_filename)
     # 配置
     config = TidalConfig()
 
@@ -123,8 +156,9 @@ if __name__ == "__main__":
 
     # 准备数据
     # 这里您需要准备自己的文本数据
-    train_ds = [r'D:\work\TidalTransformer\data\arithmetic_data.text']
-    val_ds = [r'D:\work\TidalTransformer\data\arithmetic_data.text']
+    cwd = os.path.dirname(os.path.abspath(__file__))
+    train_ds = [os.path.join(cwd, 'data/arithmetic_data.text')]
+    val_ds = [os.path.join(cwd, 'data/arithmetic_data.text')]
     train_dataset = TidalTextDataset(train_ds, tokenizer, config.max_seq_len)
     val_dataset = TidalTextDataset(val_ds, tokenizer, config.max_seq_len)
 
@@ -133,6 +167,9 @@ if __name__ == "__main__":
 
     # 初始化模型
     model = TidalTransformer(config)
+    # 最后加载模型权重
+    if config.init_from == InitFrom.resume:
+        model.load_state_dict(torch.load('best_model.pth'))
 
     # 训练模型
     train(model, train_dataloader, val_dataloader, config)

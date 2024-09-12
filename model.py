@@ -58,8 +58,8 @@ class FeedForward(nn.Module):
     def __init__(self, hidden_size, d_ff, dropout=0.1):
         super().__init__()
         self.linear1 = nn.Linear(hidden_size, d_ff)
-        self.linear2 = nn.Linear(d_ff, hidden_size)
         self.dropout = nn.Dropout(dropout)
+        self.linear2 = nn.Linear(d_ff, hidden_size)
 
     def forward(self, x):
         x = self.dropout(F.gelu(self.linear1(x)))
@@ -117,19 +117,20 @@ class TidalTransformer(nn.Module):
 
         # 创建 start_pos 掩码
         start_pos_mask = (row_indices < start_pos.unsqueeze(1).unsqueeze(2)) | (
-                    col_indices < start_pos.unsqueeze(1).unsqueeze(2))
+                col_indices < start_pos.unsqueeze(1).unsqueeze(2))
 
         # 合并掩码
         final_mask = mask | start_pos_mask
 
         # 转换为浮点数
-        return final_mask.float()
+        # return final_mask.float()
+        return final_mask
 
-    def forward(self, x, start_pos, attention_mask=None):
-        batch_size, seq_len = x.size()
+    def forward(self, input_ids, start_pos, attention_mask=None):
+        batch_size, seq_len = input_ids.size()
 
         # Embedding
-        x = self.embedding(x) * math.sqrt(self.embedding.embedding_dim)
+        x = self.embedding(input_ids) * math.sqrt(self.embedding.embedding_dim)
         x = self.dropout(x)
 
         # Generate custom attention mask
@@ -155,22 +156,27 @@ class TidalTransformer(nn.Module):
 
         return masked_logits
 
-    def compute_loss(self, logits, targets, start_pos):
+    def compute_loss(self, logits, input_ids, start_pos):
         batch_size, seq_len, vocab_size = logits.shape
 
-        # 创建一个掩码来选择有效的位置
-        mask = torch.arange(seq_len, device=logits.device).unsqueeze(0) >= start_pos.unsqueeze(1)
+        # 创建目标序列：将输入向右移动一位
+        targets = torch.roll(input_ids, shifts=-1, dims=1)
+        targets[:, -1] = self.pad_token_id  # 最后一个位置填充
 
-        # 将 logits 和 targets 展平，只保留有效的位置
-        flat_logits = logits[mask]
-        flat_targets = targets[mask]
+        # 使用更高效的张量操作创建loss_mask
+        seq_indices = torch.arange(seq_len, device=input_ids.device).unsqueeze(0)
+        loss_mask = seq_indices >= start_pos.unsqueeze(1)
 
-        # 计算损失
-        loss = F.cross_entropy(flat_logits, flat_targets, ignore_index=self.pad_token_id)
+        # 应用掩码
+        valid_logits = logits[loss_mask]
+        valid_targets = targets[loss_mask]
+
+        # 计算交叉熵损失
+        loss = F.cross_entropy(valid_logits, valid_targets, ignore_index=self.pad_token_id)
 
         return loss
 
-    def generate(self, x, start_pos,max_new_tokens, eob_token_id):
+    def generate(self, x, start_pos, max_new_tokens, eob_token_id, temperature=1.0, top_k=0, top_p=0.4):
         self.eval()
         if x.dim() == 1:
             x = x.unsqueeze(0)  # 添加批量维度
@@ -178,11 +184,36 @@ class TidalTransformer(nn.Module):
             start_pos = torch.tensor([start_pos], device=x.device)
         if start_pos.dim() == 0:
             start_pos = start_pos.unsqueeze(0)  # 添加批量维度
+
+        batch_size = x.size(0)
+        seq_len = x.size(1)
+
         with torch.no_grad():
             for _ in range(max_new_tokens):
                 logits = self(x, start_pos)
-                next_token = logits[:, -1, :].argmax(dim=-1)
+                next_token_logits = logits[:, -1, :] / temperature
+
+                for i in range(batch_size):
+                    if top_k > 0:
+                        indices_to_remove = next_token_logits[i] < torch.topk(next_token_logits[i], top_k)[0][-1]
+                        next_token_logits[i][indices_to_remove] = -float('Inf')
+
+                    if top_p < 1.0:
+                        sorted_logits, sorted_indices = torch.sort(next_token_logits[i], descending=True)
+                        cumulative_probs = torch.cumsum(F.softmax(sorted_logits, dim=-1), dim=-1)
+
+                        sorted_indices_to_remove = cumulative_probs > top_p
+                        sorted_indices_to_remove[..., 1:] = sorted_indices_to_remove[..., :-1].clone()
+                        sorted_indices_to_remove[..., 0] = 0
+
+                        indices_to_remove = sorted_indices[sorted_indices_to_remove]
+                        next_token_logits[i][indices_to_remove] = -float('Inf')
+
+                probs = F.softmax(next_token_logits, dim=-1)
+                next_token = torch.multinomial(probs, num_samples=1).squeeze(1)
+
                 x = torch.cat([x, next_token.unsqueeze(1)], dim=1)
-                if next_token == eob_token_id:
+
+                if (next_token == eob_token_id).all():
                     break
         return x
