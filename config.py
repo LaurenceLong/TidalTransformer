@@ -17,7 +17,7 @@ class TidalConfig:
     betas: tuple = (0.9, 0.95)
     batch_size: int = 32
     num_epochs: int = 1
-    eval_interval: int = 1
+    eval_interval: int = 100
     log_interval: int = 100
     save_interval: int = 10000
-    eval_iters: int = 200
+    eval_iters: int = 20

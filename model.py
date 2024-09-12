@@ -170,12 +170,19 @@ class TidalTransformer(nn.Module):
 
         return loss
 
-    def generate(self, x, start_pos, max_new_tokens):
+    def generate(self, x, start_pos,max_new_tokens, eob_token_id):
         self.eval()
+        if x.dim() == 1:
+            x = x.unsqueeze(0)  # 添加批量维度
+        if isinstance(start_pos, int):
+            start_pos = torch.tensor([start_pos], device=x.device)
+        if start_pos.dim() == 0:
+            start_pos = start_pos.unsqueeze(0)  # 添加批量维度
         with torch.no_grad():
             for _ in range(max_new_tokens):
                 logits = self(x, start_pos)
                 next_token = logits[:, -1, :].argmax(dim=-1)
                 x = torch.cat([x, next_token.unsqueeze(1)], dim=1)
-                start_pos += 1
+                if next_token == eob_token_id:
+                    break
         return x

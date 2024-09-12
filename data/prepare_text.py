@@ -9,9 +9,11 @@ from torch.utils.data import Dataset
 from data.nested_list_index import NestedListIndex
 from tokenizer import MixedTokenizer
 
+CWD = os.path.dirname(os.path.abspath(__file__))
+
 
 class TidalTextDataset(Dataset):
-    def __init__(self, data_paths, tokenizer, max_seq_len=256, cache_dir='.cache'):
+    def __init__(self, data_paths, tokenizer, max_seq_len=256, cache_dir=os.path.join(CWD, '.cache')):
         self.max_seq_len = max_seq_len
         self.tokenizer = tokenizer
 
@@ -50,7 +52,7 @@ class TidalTextDataset(Dataset):
                 token_text = tokenizer.decode([tokens[i + 1]])
                 token_to_u8 = tokenizer.u8_encode(token_text)
                 token_to_u8.reverse()
-                data = visited + [tokenizer.bob_token_id] + token_to_u8 + [tokenizer.eob_token_id, len(visited)]
+                data = visited + token_to_u8 + [tokenizer.eob_token_id, len(visited)]
                 tokenized_lines.append(data)
                 lengths.append(len(data))
 

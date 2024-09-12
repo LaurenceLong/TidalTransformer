@@ -32,10 +32,12 @@ def get_logger(filename, verbosity=1, name=None):
 
 
 timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-log_filename = f"training_log_{timestamp}.log"
+log_filename = f"training_{timestamp}.log"
 log = get_logger(log_filename)
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+
 # device = "cpu"
 
 
@@ -75,17 +77,18 @@ def train(model, train_dataloader, val_dataloader, config):
                     torch.save(model.state_dict(), f'model_step_{step}.pth')
                     log.info(f"Saved model at step {step}")
 
+                if (step + 1) % config.eval_interval == 0:
+                    val_loss = evaluate(model, val_dataloader, config)
+                    log.info(f"Validation loss: {val_loss:.4f}")
+                    model.train()
+
+                    if val_loss < best_val_loss:
+                        best_val_loss = val_loss
+                        torch.save(model.state_dict(), 'best_model.pth')
+                        log.info("Saved best model.")
+
             avg_train_loss = total_loss / len(train_dataloader)
             log.info(f"Epoch {epoch + 1}, Average train loss: {avg_train_loss:.4f}")
-
-            if (epoch + 1) % config.eval_interval == 0:
-                val_loss = evaluate(model, val_dataloader, config)
-                log.info(f"Validation loss: {val_loss:.4f}")
-
-                if val_loss < best_val_loss:
-                    best_val_loss = val_loss
-                    torch.save(model.state_dict(), 'best_model.pth')
-                    log.info("Saved best model.")
 
 
 def evaluate(model, dataloader, config):
@@ -96,29 +99,15 @@ def evaluate(model, dataloader, config):
         for i, batch in enumerate(dataloader):
             if i >= config.eval_iters:
                 break
-            input_ids, attention_mask = batch
-            input_ids, attention_mask = input_ids.to(device), attention_mask.to(device)
+            input_ids, start_pos = batch
+            input_ids, start_pos = input_ids.to(device), start_pos.to(device)
 
-            start_pos = 0
-
-            logits = model(input_ids, start_pos, attention_mask)
+            logits = model(input_ids, start_pos)
             loss = model.compute_loss(logits, input_ids, start_pos)
 
             total_loss += loss.item()
 
     return total_loss / min(config.eval_iters, len(dataloader))
-
-
-def generate_text(model, tokenizer, prompt, max_new_tokens, config):
-    model.to(device)
-    model.eval()
-
-    input_ids = tokenizer.encode(prompt, return_tensors="pt").to(device)
-    start_pos = input_ids.size(1)
-
-    generated = model.generate(input_ids, start_pos, max_new_tokens)
-
-    return tokenizer.decode(generated[0])
 
 
 if __name__ == "__main__":
@@ -147,11 +136,3 @@ if __name__ == "__main__":
 
     # 训练模型
     train(model, train_dataloader, val_dataloader, config)
-
-    # 加载最佳模型
-    model.load_state_dict(torch.load('best_model.pth'))
-
-    # 生成文本示例
-    prompt = "Once upon a time"
-    generated_text = generate_text(model, tokenizer, prompt, max_new_tokens=50, config=config)
-    log.info(f"Generated text: {generated_text}")
