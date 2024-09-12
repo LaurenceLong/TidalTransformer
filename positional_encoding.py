@@ -27,16 +27,29 @@ def get_slopes(n_heads):
                                                            :n_heads - closest_power_of_2]
 
 
-def build_alibi_tensor(attention_mask: torch.Tensor, num_heads: int, bob_idx: int, dtype: torch.dtype) -> torch.Tensor:
-    batch_size, seq_length = attention_mask.shape
+def build_alibi_tensor(attention_mask: torch.Tensor, num_heads: int, start_pos: torch.Tensor,
+                       dtype: torch.dtype) -> torch.Tensor:
+    batch_size, seq_length, _ = attention_mask.shape
+
     # 生成距离矩阵
-    distances = generate_alibi_distance_matrix(seq_length, bob_idx)
+    distances = torch.arange(seq_length, device=attention_mask.device).unsqueeze(0).expand(batch_size, -1)
+    distances = distances.unsqueeze(-1) - distances.unsqueeze(-2)
+    distances = distances.abs().float()
+
+    # 应用 start_pos
+    start_pos = start_pos.view(-1, 1, 1)
+    distances = torch.where(
+        (torch.arange(seq_length, device=attention_mask.device).unsqueeze(0) < start_pos) |
+        (torch.arange(seq_length, device=attention_mask.device).unsqueeze(1) < start_pos),
+        torch.zeros_like(distances),
+        distances
+    )
+
     # 获取每个头的斜率
     slopes = torch.tensor(get_slopes(num_heads), dtype=dtype, device=attention_mask.device)
+
     # 计算alibi偏置
-    alibi = slopes.unsqueeze(1).unsqueeze(2) * torch.tensor(distances, dtype=dtype, device=attention_mask.device)
-    # 调整形状以匹配注意力分数的形状
-    alibi = alibi.unsqueeze(0).expand(batch_size, num_heads, seq_length, seq_length)
+    alibi = slopes.view(1, num_heads, 1, 1) * distances.unsqueeze(1)
 
     return alibi
 

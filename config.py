@@ -8,6 +8,7 @@ class TidalConfig:
     num_heads: int = 12
     num_layers: int = 12
     vocab_size: int = -1
+    output_vocab_size: int = -1
     max_seq_len: int = 128
     dropout: float = 0
     # training params...
@@ -15,7 +16,7 @@ class TidalConfig:
     weight_decay: float = 1e-1
     betas: tuple = (0.9, 0.95)
     batch_size: int = 32
-    num_epochs: int = 10
+    num_epochs: int = 1
     eval_interval: int = 1
     log_interval: int = 100
     save_interval: int = 10000

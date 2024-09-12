@@ -28,26 +28,25 @@ def generate_arithmetic_problem():
         answer = num1 / num2  # 整数除法
 
     text = f"{num1} {operation} {num2} = {answer}"
-    return {
-        "prompt": question,
-        "answer": str(answer),
-        "text": text,
-    }
+    return {"prompt": question, "answer": str(answer)}, text
 
 
 def generate_training_data(num_problems):
-    data = []
+    sft = []
+    texts = []
     for _ in range(num_problems):
-        problem_dict = generate_arithmetic_problem()
-        data.append(json.dumps(problem_dict, ensure_ascii=False))
-    return "\n".join(data)
+        prompt_answer, text = generate_arithmetic_problem()
+        sft.append(json.dumps(prompt_answer, ensure_ascii=False) + "\n")
+        texts.append(text + "\n")
+    return sft, texts
 
 
 # 生成1000个问题的训练数据
-training_data = generate_training_data(10 ** 5)
+json_data, text_data = generate_training_data(10 ** 5)
 
 # 将数据保存到文件
-with open("arithmetic_training_data.jsonl", "w", encoding="utf-8") as f:
-    f.write(training_data)
+with open("arithmetic_data.jsonl", "w", encoding="utf-8") as f1, open("arithmetic_data.text", "w", encoding="utf-8") as f2:
+    f1.writelines(json_data)
+    f2.writelines(text_data)
 
-print("训练数据已生成并保存到 arithmetic_training_data.jsonl")
+print("训练数据已生成并保存到 arithmetic_data.jsonl & arithmetic_data.text")

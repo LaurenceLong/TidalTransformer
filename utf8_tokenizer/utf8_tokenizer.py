@@ -6,8 +6,9 @@ DEFAULT_VOCAB_SIZE = 250  # 只用一个字节
 class UTF8Tokenizer:
     def __init__(self, vocab_size=DEFAULT_VOCAB_SIZE):
         self.vocab_size = min(vocab_size, DEFAULT_VOCAB_SIZE)
-        special_tokens = {'<PAD>': 0, '<BOS>': 1, '<EOS>': 2, '<UNK>': 3, '<BOB>': 4, '<EOB>': 5}
-        self.special_tokens = {k: v + self.vocab_size for k, v in special_tokens.items()}
+        special_tokens = {'<BOS>': 1, '<EOS>': 2, '<UNK>': 3, '<BOB>': 4, '<EOB>': 5}
+        self.special_tokens = {'<PAD>': 0}
+        self.special_tokens.update({k: v + self.vocab_size for k, v in special_tokens.items()})
         self.char_to_id = {chr(i): i + len(self.special_tokens) for i in
                            range(min(128, vocab_size - len(self.special_tokens)))}
         self.id_to_char = {v: k for k, v in self.char_to_id.items()}
@@ -15,9 +16,9 @@ class UTF8Tokenizer:
         for token, _id in self.special_tokens.items():
             self.id_to_char[_id] = token
 
-        self.eos_token_id = self.special_tokens['<EOS>']
-        self.bos_token_id = self.special_tokens['<BOS>']
         self.pad_token_id = self.special_tokens['<PAD>']
+        self.bos_token_id = self.special_tokens['<BOS>']
+        self.eos_token_id = self.special_tokens['<EOS>']
         self.unk_token_id = self.special_tokens['<UNK>']
         self.bob_token_id = self.special_tokens['<BOB>']
         self.eob_token_id = self.special_tokens['<EOB>']
