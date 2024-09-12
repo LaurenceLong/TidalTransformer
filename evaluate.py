@@ -16,7 +16,7 @@ def generate_text(model, tokenizer, prompt, max_new_tokens):
     model.to(device)
     model.eval()
 
-    input_ids = torch.tensor(tokenizer.encode(prompt) + [tokenizer.bob_token_id]).to(device)
+    input_ids = torch.tensor(tokenizer.encode(prompt)).to(device)
     start_pos = input_ids.size(0) - 1
 
     generated = model.generate(input_ids, start_pos, max_new_tokens, tokenizer.eob_token_id)
