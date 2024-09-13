@@ -25,5 +25,5 @@ class TidalConfig:
     log_interval: int = 100
     eval_interval: int = 500
     eval_iters: int = 20
-    save_interval: int = 10000
+    save_interval: int = 5000
     init_from: int = InitFrom.scratch

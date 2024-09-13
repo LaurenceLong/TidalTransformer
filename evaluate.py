@@ -37,7 +37,8 @@ if __name__ == "__main__":
     config.output_vocab_size = tokenizer.u8_vocab_size
     model = TidalTransformer(config)
     # 最后加载模型权重
-    model.load_state_dict(torch.load('best_model.pth'))
+    # model.load_state_dict(torch.load('best_model.pth'))
+    model.load_state_dict(torch.load('model_step_10000.pth'))
     print_model_parameters(model)
     # 生成文本示例
     prompt = "5320 + 1926 ="
