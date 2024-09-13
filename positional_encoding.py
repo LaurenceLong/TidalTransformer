@@ -3,19 +3,9 @@ import torch
 import math
 
 
-def generate_alibi_distance_matrix(seq_length, bob_idx):
-    # distances = np.array(
-    #     [(i - bob_idx) if i >= bob_idx else seq_length - bob_idx - 1 + abs(i - bob_idx) for i in range(seq_length)])
-    # print(distances[:, np.newaxis] - distances)
-    # downscale with sqrt
-    distances = np.array([np.sqrt(i - bob_idx) if i >= bob_idx else
-                          np.sqrt(seq_length - bob_idx) - 1 + abs(i - bob_idx) for i in range(seq_length)])
-    return distances[:, np.newaxis] - distances
-
-
 def get_slopes(n_heads):
     def get_slopes_power_of_2(n_heads):
-        start = 2 ** (-(2 ** -(math.log2(n_heads) - 3)))
+        start = (2 ** (-2 ** -(math.log2(n_heads) - 3)))
         ratio = start
         return [start * ratio ** i for i in range(n_heads)]
 
@@ -27,66 +17,74 @@ def get_slopes(n_heads):
                                                            :n_heads - closest_power_of_2]
 
 
+def example_alibi_distance_matrix(seq_length, start_pos):
+    distances = np.array([round(np.sqrt(i - start_pos), 1) if i >= start_pos else
+                          round(np.sqrt(seq_length - start_pos - 1), 1) + abs(i - start_pos) for i in
+                          range(seq_length)])
+    # distances = np.array([i - start_pos if i >= start_pos else
+    #                       seq_length - start_pos - 1 + abs(i - start_pos) for i in range(seq_length)])
+    return distances[:, np.newaxis] - distances
+
+
+def generate_alibi_distance_matrix(seq_length, start_pos):
+    device = start_pos.device  # 获取start_pos的设备
+    indices = torch.arange(seq_length, dtype=torch.float32, device=device).unsqueeze(0)
+    start_pos = start_pos.unsqueeze(1).float()
+
+    distances = torch.where(
+        indices >= start_pos,
+        torch.sqrt(indices - start_pos),
+        torch.sqrt(torch.tensor(seq_length - start_pos - 1, dtype=torch.float32, device=device)) + torch.abs(
+            indices - start_pos)
+    )
+    return distances.unsqueeze(2) - distances.unsqueeze(1)
+
+
 def build_alibi_tensor(attention_mask: torch.Tensor, num_heads: int, start_pos: torch.Tensor,
                        dtype: torch.dtype) -> torch.Tensor:
     batch_size, seq_length, _ = attention_mask.shape
-
     # 生成距离矩阵
-    distances = torch.arange(seq_length, device=attention_mask.device).unsqueeze(0).expand(batch_size, -1)
-    distances = distances.unsqueeze(-1) - distances.unsqueeze(-2)
-    distances = distances.abs().float()
-
-    # 应用 start_pos
-    start_pos = start_pos.view(-1, 1, 1)
-    distances = torch.where(
-        (torch.arange(seq_length, device=attention_mask.device).unsqueeze(0) < start_pos) |
-        (torch.arange(seq_length, device=attention_mask.device).unsqueeze(1) < start_pos),
-        torch.zeros_like(distances),
-        distances
-    )
-
+    distances = generate_alibi_distance_matrix(seq_length, start_pos)
     # 获取每个头的斜率
     slopes = torch.tensor(get_slopes(num_heads), dtype=dtype, device=attention_mask.device)
-
     # 计算alibi偏置
     alibi = slopes.view(1, num_heads, 1, 1) * distances.unsqueeze(1)
-
     return alibi
 
 
-def test():
-    # 示例使用
-    seq_length = 20  # 总序列长度
-    bob_idx = 5  # <bob>的位置（从0开始计数）
-    num_heads = 8  # 注意力头的数量
-    batch_size = 2  # 批次大小
+def generate_cusual_mask(batch_size, seq_len):
+    # 创建基础掩码（下三角矩阵）
+    mask = torch.tril(torch.ones(seq_len, seq_len, dtype=torch.bool))
+    # 扩展掩码到批次维度
+    mask = mask.unsqueeze(0).expand(batch_size, -1, -1)
+    return mask
 
-    # 生成示例注意力掩码
-    attention_mask = torch.ones(batch_size, seq_length)
-    print(attention_mask.size())
 
-    # 计算alibi张量
-    alibi_tensor = build_alibi_tensor(attention_mask, num_heads, bob_idx, torch.float32)
+def test_build_alibi_tensor():
+    # 测试用例1：基本功能测试
+    batch_size = 2
+    seq_len = 5
+    num_heads = 8
+    pos = 3
 
-    print("Alibi distance matrix:")
-    matrix = generate_alibi_distance_matrix(seq_length, bob_idx)
-    for _ in matrix:
-        print(_)
-    print("\nAlibi tensor shape:", alibi_tensor.shape)
-    print("\nAlibi tensor for the first head in the first batch:")
-    print(alibi_tensor[0, 0])
+    input_ids = torch.ones(batch_size, seq_len)
+    start_pos = torch.tensor([pos, pos])
 
-    # 验证alibi偏置的特性
-    print("\nVerifying alibi bias properties:")
-    print("1. Symmetry: ", torch.allclose(alibi_tensor, alibi_tensor.transpose(-1, -2)))
-    print("2. Zero diagonal: ", torch.allclose(alibi_tensor.diagonal(dim1=-2, dim2=-1),
-                                               torch.zeros_like(alibi_tensor.diagonal(dim1=-2, dim2=-1))))
-    print("3. Negative values: ", (alibi_tensor <= 0).all())
+    attention_mask = generate_cusual_mask(batch_size, seq_len)
+    print("0000\n", attention_mask)
 
-    # 检查不同头的偏置差异
-    print("\nBias difference between first and last head:")
-    print(alibi_tensor[0, 0] - alibi_tensor[0, -1])
+    print(1111, example_alibi_distance_matrix(seq_len, pos))
+
+    distances = generate_alibi_distance_matrix(seq_len, start_pos)
+    print(2222, distances)
+
+    print(3333, get_slopes(num_heads))
+
+    # result = build_alibi_tensor(attention_mask, num_heads, start_pos, dtype)
+    # print(8888, result.shape)
+    # print(9999, result)
 
 
 if __name__ == "__main__":
-    test()
+    # 运行测试
+    test_build_alibi_tensor()

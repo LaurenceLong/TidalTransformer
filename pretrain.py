@@ -78,7 +78,7 @@ def train(model, train_dataloader, val_dataloader, config):
                     torch.save(model.state_dict(), f'model_step_{step}.pth')
                     log.info(f"Saved model at step {step}")
 
-                if (step + 1) % config.eval_interval == 0:
+                if step % config.eval_interval == 0:
                     val_loss = evaluate(model, val_dataloader, config)
                     log.info(f"Validation loss: {val_loss:.4f}")
                     model.train()

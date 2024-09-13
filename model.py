@@ -6,7 +6,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from config import TidalConfig
-from positional_encoding import build_alibi_tensor
+from positional_encoding import build_alibi_tensor, generate_cusual_mask
 
 
 class MultiHeadAttention(nn.Module):
@@ -103,29 +103,6 @@ class TidalTransformer(nn.Module):
         self.dropout = nn.Dropout(cfg.dropout)
         self.pad_token_id = 0
 
-    def generate_custom_mask(self, seq_len, start_pos):
-        batch_size = start_pos.size(0)
-        device = start_pos.device
-
-        # 创建基础掩码
-        mask = torch.tril(torch.ones(seq_len, seq_len, dtype=torch.bool, device=device))
-        mask = mask.unsqueeze(0).expand(batch_size, -1, -1)
-
-        # 创建行和列索引
-        row_indices = torch.arange(seq_len, device=device).unsqueeze(0).unsqueeze(2)
-        col_indices = torch.arange(seq_len, device=device).unsqueeze(0).unsqueeze(1)
-
-        # 创建 start_pos 掩码
-        start_pos_mask = (row_indices < start_pos.unsqueeze(1).unsqueeze(2)) | (
-                col_indices < start_pos.unsqueeze(1).unsqueeze(2))
-
-        # 合并掩码
-        final_mask = mask | start_pos_mask
-
-        # 转换为浮点数
-        # return final_mask.float()
-        return final_mask
-
     def forward(self, input_ids, start_pos, attention_mask=None):
         batch_size, seq_len = input_ids.size()
 
@@ -135,7 +112,7 @@ class TidalTransformer(nn.Module):
 
         # Generate custom attention mask
         if attention_mask is None:
-            attention_mask = self.generate_custom_mask(seq_len, start_pos).to(x.device)
+            attention_mask = generate_cusual_mask(batch_size, seq_len).to(x.device)
 
         # Add ALIBI positional encoding
         alibi = build_alibi_tensor(attention_mask, self.num_heads, start_pos, x.dtype)
@@ -147,12 +124,11 @@ class TidalTransformer(nn.Module):
         # Output layer
         logits = self.fc(x)
 
-        # 处理每个批次样本的 start_pos
+        # 使用高效的张量操作来处理 masked_logits
         batch_size, seq_len, vocab_size = logits.shape
-        masked_logits = torch.zeros_like(logits)
-
-        for i in range(batch_size):
-            masked_logits[i, start_pos[i]:, :] = logits[i, start_pos[i]:, :]
+        seq_indices = torch.arange(seq_len, device=logits.device).unsqueeze(0)
+        mask = seq_indices >= start_pos.unsqueeze(1)
+        masked_logits = logits.masked_fill(~mask.unsqueeze(-1), 0)
 
         return masked_logits
 
