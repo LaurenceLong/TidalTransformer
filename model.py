@@ -127,7 +127,7 @@ class TidalTransformer(nn.Module):
         batch_size, seq_len, vocab_size = logits.shape
         seq_indices = torch.arange(seq_len, device=logits.device).unsqueeze(0)
         mask = seq_indices >= start_pos.unsqueeze(1)
-        masked_logits = logits.masked_fill(~mask.unsqueeze(-1), 0)
+        masked_logits = logits.masked_fill(~mask.unsqueeze(-1), -1e9)
         return masked_logits
 
     def compute_loss(self, logits, input_ids, start_pos):
@@ -161,7 +161,7 @@ class TidalTransformer(nn.Module):
                 for i in range(batch_size):
                     if top_k > 0:
                         indices_to_remove = next_token_logits[i] < torch.topk(next_token_logits[i], top_k)[0][-1]
-                        next_token_logits[i][indices_to_remove] = -float('Inf')
+                        next_token_logits[i][indices_to_remove] = -float('inf')
 
                     if top_p < 1.0:
                         sorted_logits, sorted_indices = torch.sort(next_token_logits[i], descending=True)
@@ -172,7 +172,7 @@ class TidalTransformer(nn.Module):
                         sorted_indices_to_remove[..., 0] = 0
 
                         indices_to_remove = sorted_indices[sorted_indices_to_remove]
-                        next_token_logits[i][indices_to_remove] = -float('Inf')
+                        next_token_logits[i][indices_to_remove] = -float('inf')
 
                 probs = F.softmax(next_token_logits, dim=-1)
                 next_token = torch.multinomial(probs, num_samples=1).squeeze(1)

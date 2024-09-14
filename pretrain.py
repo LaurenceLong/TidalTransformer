@@ -11,6 +11,7 @@ from tqdm.contrib.logging import logging_redirect_tqdm
 
 from config import TidalConfig, InitFrom
 from data.prepare_text import TidalTextDataset
+from evaluate import generate_text, decode_text
 from model import TidalTransformer
 from tokenizer import MixedTokenizer
 
@@ -79,8 +80,13 @@ def train(model, train_dataloader, val_dataloader, config):
                     log.info(f"Saved model at step {step}")
 
                 if step % config.eval_interval == 0:
-                    val_loss = evaluate(model, val_dataloader, config)
+                    val_loss = validate(model, val_dataloader, config)
                     log.info(f"Validation loss: {val_loss:.4f}")
+
+                    prompt = decode_text(input_ids, start_pos, tokenizer)
+                    res_text = generate_text(model, tokenizer, prompt, max_new_tokens=10)
+                    print(f"Generate for prompt: {prompt}")
+                    print(res_text)
                     model.train()
 
                     if val_loss < best_val_loss:
@@ -92,7 +98,7 @@ def train(model, train_dataloader, val_dataloader, config):
             log.info(f"Epoch {epoch + 1}, Average train loss: {avg_train_loss:.4f}")
 
 
-def evaluate(model, dataloader, config):
+def validate(model, dataloader, config):
     model.eval()
     total_loss = 0
 
@@ -157,8 +163,8 @@ if __name__ == "__main__":
     # 准备数据
     # 这里您需要准备自己的文本数据
     cwd = os.path.dirname(os.path.abspath(__file__))
-    train_ds = [os.path.join(cwd, 'data/arithmetic_data.text')]
-    val_ds = [os.path.join(cwd, 'data/arithmetic_validation.text')]
+    train_ds = [os.path.join(cwd, 'data/arithmetic_data.txt')]
+    val_ds = [os.path.join(cwd, 'data/arithmetic_validation.txt')]
     train_dataset = TidalTextDataset(train_ds, tokenizer, config.max_seq_len)
     val_dataset = TidalTextDataset(val_ds, tokenizer, config.max_seq_len)
 

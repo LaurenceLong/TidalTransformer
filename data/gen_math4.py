@@ -45,18 +45,18 @@ def generate_training_data(num_problems):
 json_data, text_data = generate_training_data(10 ** 5)
 
 # 将数据保存到文件
-with open("arithmetic_data.jsonl", "w", encoding="utf-8") as f1, open("arithmetic_data.text", "w",
+with open("arithmetic_data.jsonl", "w", encoding="utf-8") as f1, open("arithmetic_data.txt", "w",
                                                                       encoding="utf-8") as f2:
     f1.writelines(json_data)
     f2.writelines(text_data)
-print("训练数据已生成并保存到 arithmetic_data.jsonl & arithmetic_data.text")
+print("训练数据已生成并保存到 arithmetic_data.jsonl & arithmetic_data.txt")
 
 # 生成问题的训练数据
 json_data, text_data = generate_training_data(10 ** 5 // 2)
 
 # 将数据保存到文件
-with open("arithmetic_validation.jsonl", "w", encoding="utf-8") as f1, open("arithmetic_validation.text", "w",
+with open("arithmetic_validation.jsonl", "w", encoding="utf-8") as f1, open("arithmetic_validation.txt", "w",
                                                                             encoding="utf-8") as f2:
     f1.writelines(json_data)
     f2.writelines(text_data)
-print("训练数据已生成并保存到 arithmetic_validation.jsonl & arithmetic_validation.text")
+print("训练数据已生成并保存到 arithmetic_validation.jsonl & arithmetic_validation.txt")
