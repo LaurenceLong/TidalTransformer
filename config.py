@@ -16,6 +16,7 @@ class TidalConfig:
     output_vocab_size: int = -1
     max_seq_len: int = 128
     dropout: float = 0
+    layer_norm_eps: float = 1e-6
     # training params...
     learning_rate: float = 3e-4
     weight_decay: float = 1e-1
@@ -26,4 +27,4 @@ class TidalConfig:
     eval_interval: int = 500
     eval_iters: int = 20
     save_interval: int = 5000
-    init_from: int = InitFrom.scratch
+    init_from: int = InitFrom.resume

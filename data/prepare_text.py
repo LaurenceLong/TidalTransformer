@@ -52,7 +52,11 @@ class TidalTextDataset(Dataset):
                 token_text = tokenizer.decode([tokens[i + 1]])
                 token_to_u8 = tokenizer.u8_encode(token_text)
                 token_to_u8.reverse()
-                data = visited + token_to_u8 + [tokenizer.eob_token_id, len(visited)]
+                if i < len(tokens) - 2:
+                    eox = tokenizer.eob_token_id
+                else:
+                    eox = tokenizer.eos_token_id
+                data = visited + token_to_u8 + [eox, len(visited)]
                 tokenized_lines.append(data)
                 lengths.append(len(data))
 

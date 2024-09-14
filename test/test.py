@@ -1,62 +1,64 @@
+import math
+
 import torch
 
+from model import TidalTransformer
 
-def original_masked_logits(logits, start_pos):
-    batch_size, seq_len, vocab_size = logits.shape
-    masked_logits = torch.zeros_like(logits)
 
+# 假设我们有一个简化版的 TidalConfig
+class TidalConfig:
+    def __init__(self):
+        self.hidden_size = 64
+        self.num_heads = 4
+        self.vocab_size = 1000
+        self.output_vocab_size = 1000
+        self.num_layers = 2
+        self.dropout = 0.1
+
+
+# 假设 TransformerBlock 和其他必要的函数已经定义
+
+def test_tidal_transformer_loss():
+    # 初始化配置和模型
+    cfg = TidalConfig()
+    model = TidalTransformer(cfg)
+
+    # 创建一个简单的输入序列
+    batch_size = 1
+    seq_len = 10
+    input_ids = torch.randint(1, cfg.vocab_size, (batch_size, seq_len))  # 避免使用 pad_token_id (0)
+    start_pos = torch.tensor([3])  # 不同的 start_pos 用于测试
+
+    # 创建一个完全正确的预测
+    perfect_logits = torch.full((batch_size, seq_len, cfg.vocab_size), -float('inf'))
     for i in range(batch_size):
-        masked_logits[i, start_pos[i]:, :] = logits[i, start_pos[i]:, :]
+        for j in range(start_pos[i], seq_len):
+            perfect_logits[i, j, input_ids[i, min(j + 1, seq_len - 1)]] = 0  # 给正确的下一个 token 一个 logit 值 0
 
-    return masked_logits
+    # 打印一些调试信息
+    print("Input IDs:")
+    print(input_ids)
+    print(perfect_logits)
+    print("Perfect Logits shape:", perfect_logits.shape)
+    print("Start positions:", start_pos)
 
+    # 计算损失
+    loss = model.compute_loss(perfect_logits, input_ids, start_pos)
 
-def optimized_masked_logits(logits, start_pos):
-    batch_size, seq_len, vocab_size = logits.shape
-    seq_indices = torch.arange(seq_len, device=logits.device).unsqueeze(0)
-    mask = seq_indices >= start_pos.unsqueeze(1)
-    masked_logits = logits.masked_fill(~mask.unsqueeze(-1), 0)
+    print(f"Loss with perfect prediction: {loss.item()}")
+    assert math.isclose(loss.item(), 0, abs_tol=1e-6), f"Loss should be close to 0, but got {loss.item()}"
 
-    return masked_logits
+    # 测试一个不完美的预测
+    imperfect_logits = perfect_logits.clone()
+    imperfect_logits[0, -2, input_ids[0, -1]] = -float('inf')  # 将倒数第二个 token 的预测改为不正确
+    imperfect_logits[0, -2, (input_ids[0, -1] + 1) % cfg.vocab_size] = 0  # 给一个错误的 token 较高的概率
+    imperfect_loss = model.compute_loss(imperfect_logits, input_ids, start_pos)
 
+    print(f"Loss with imperfect prediction: {imperfect_loss.item()}")
+    assert imperfect_loss.item() > 0, f"Loss should be greater than 0 for imperfect prediction, but got {imperfect_loss.item()}"
 
-def test_masked_logits_equivalence():
-    # 设置随机种子以确保可重复性
-    torch.manual_seed(42)
-
-    # 创建随机输入
-    batch_size, seq_len, vocab_size = 4, 10, 100
-    logits = torch.randn(batch_size, seq_len, vocab_size)
-    start_pos = torch.randint(0, seq_len, (batch_size,))
-
-    # 运行两个版本的代码
-    original_output = original_masked_logits(logits, start_pos)
-    optimized_output = optimized_masked_logits(logits, start_pos)
-
-    # 比较结果
-    are_equal = torch.allclose(original_output, optimized_output, rtol=1e-5, atol=1e-8)
-
-    if are_equal:
-        print("Test passed: Both implementations produce equivalent results.")
-    else:
-        print("Test failed: Implementations produce different results.")
-
-        # 如果结果不同，打印一些调试信息
-        print(f"Start positions: {start_pos}")
-        print(f"Maximum absolute difference: {(original_output - optimized_output).abs().max().item()}")
-        print(f"Average absolute difference: {(original_output - optimized_output).abs().mean().item()}")
-
-        # 找出不同的位置
-        diff_mask = ~torch.isclose(original_output, optimized_output, rtol=1e-5, atol=1e-8)
-        diff_indices = torch.nonzero(diff_mask, as_tuple=True)
-        print(f"Number of different elements: {len(diff_indices[0])}")
-        if len(diff_indices[0]) > 0:
-            print("Sample of differences:")
-            for i in range(min(5, len(diff_indices[0]))):
-                idx = tuple(index[i] for index in diff_indices)
-                print(
-                    f"  Position {idx}: Original: {original_output[idx].item():.6f}, Optimized: {optimized_output[idx].item():.6f}")
+    print("All tests passed!")
 
 
 # 运行测试
-test_masked_logits_equivalence()
+test_tidal_transformer_loss()

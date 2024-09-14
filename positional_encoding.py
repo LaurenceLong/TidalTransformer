@@ -17,12 +17,14 @@ def get_slopes(n_heads):
                                                            :n_heads - closest_power_of_2]
 
 
-def example_alibi_distance_matrix(seq_length, start_pos):
-    distances = np.array([round(np.sqrt(i - start_pos), 1) if i >= start_pos else
-                          round(np.sqrt(seq_length - start_pos - 1), 1) + abs(i - start_pos) for i in
-                          range(seq_length)])
-    # distances = np.array([i - start_pos if i >= start_pos else
-    #                       seq_length - start_pos - 1 + abs(i - start_pos) for i in range(seq_length)])
+def example_alibi_distance_matrix(seq_length, start_pos, sqrt=False):
+    if not sqrt:
+        distances = np.array([i - start_pos if i >= start_pos else
+                              seq_length - start_pos - 1 + abs(i - start_pos) for i in range(seq_length)])
+    else:
+        distances = np.array([round(np.sqrt(i - start_pos), 2) if i >= start_pos else
+                              round(np.sqrt(seq_length - start_pos - 1), 2) + abs(i - start_pos) for i in
+                              range(seq_length)])
     return distances[:, np.newaxis] - distances
 
 
@@ -34,15 +36,14 @@ def generate_alibi_distance_matrix(seq_length, start_pos):
     distances = torch.where(
         indices >= start_pos,
         torch.sqrt(indices - start_pos),
-        torch.sqrt(torch.tensor(seq_length - start_pos - 1, dtype=torch.float32, device=device)) + torch.abs(
-            indices - start_pos)
+        torch.sqrt(seq_length - start_pos - 1) + torch.abs(indices - start_pos)
     )
     return distances.unsqueeze(2) - distances.unsqueeze(1)
 
 
-def build_alibi_tensor(attention_mask: torch.Tensor, num_heads: int, start_pos: torch.Tensor,
+def build_alibi_tensor(attention_mask: torch.Tensor, start_pos: torch.Tensor,
                        dtype: torch.dtype) -> torch.Tensor:
-    batch_size, seq_length, _ = attention_mask.shape
+    batch_size, num_heads, seq_length, _ = attention_mask.shape
     # 生成距离矩阵
     distances = generate_alibi_distance_matrix(seq_length, start_pos)
     # 获取每个头的斜率
@@ -52,35 +53,37 @@ def build_alibi_tensor(attention_mask: torch.Tensor, num_heads: int, start_pos: 
     return alibi
 
 
-def generate_cusual_mask(batch_size, seq_len):
+def generate_casual_mask(batch_size, num_heads, seq_len):
     # 创建基础掩码（下三角矩阵）
     mask = torch.tril(torch.ones(seq_len, seq_len, dtype=torch.bool))
-    # 扩展掩码到批次维度
-    mask = mask.unsqueeze(0).expand(batch_size, -1, -1)
+    mask = mask.float().masked_fill(mask == 0, float('-inf')).masked_fill(mask == 1, float(0.0))
+    # 扩展掩码到批次+ num_heads维度
+    mask = mask.unsqueeze(0).expand(batch_size, num_heads, -1, -1)
     return mask
 
 
 def test_build_alibi_tensor():
     # 测试用例1：基本功能测试
-    batch_size = 2
-    seq_len = 5
-    num_heads = 8
+    batch_size = 1
+    num_heads = 1
+    seq_len = 7
     pos = 3
 
     input_ids = torch.ones(batch_size, seq_len)
-    start_pos = torch.tensor([pos, pos])
+    start_pos = torch.tensor([pos, 4])
 
-    attention_mask = generate_cusual_mask(batch_size, seq_len)
+    attention_mask = generate_casual_mask(batch_size, num_heads, seq_len)
     print("0000\n", attention_mask)
 
     print(1111, example_alibi_distance_matrix(seq_len, pos))
+    print(1111, example_alibi_distance_matrix(seq_len, pos, True))
 
     distances = generate_alibi_distance_matrix(seq_len, start_pos)
     print(2222, distances)
 
     print(3333, get_slopes(num_heads))
 
-    # result = build_alibi_tensor(attention_mask, num_heads, start_pos, dtype)
+    # result = build_alibi_tensor(attention_mask, start_pos, dtype)
     # print(8888, result.shape)
     # print(9999, result)
 

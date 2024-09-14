@@ -6,25 +6,38 @@ from model import TidalTransformer
 from tokenizer import MixedTokenizer
 
 
-def print_model_parameters(model):
+def show_model_parameters(model):
     print(f"Model params:")
     for name, param in model.named_parameters():
         print(f"Layer: {name} | Size: {param.size()} | Elements: {param.numel()}")
 
 
-def generate_text(model, tokenizer, prompt, max_new_tokens):
-    model.to(device)
-    model.eval()
-
-    input_ids = torch.tensor(tokenizer.encode(prompt)).to(device)
-    start_pos = input_ids.size(0)
-    print(3333, input_ids, start_pos)
-
-    generated = model.generate(input_ids, start_pos, max_new_tokens, tokenizer.eob_token_id)
-    print(4444, generated)
+def decode_text(generated, start_pos, tokenizer):
     old = tokenizer.decode(generated[0][:start_pos])
     new = tokenizer.u8_decode(generated[0][start_pos:])[::-1]
     return old + new
+
+
+def generate_text(model, tokenizer, prompt, max_new_tokens):
+    current = prompt
+    inited = False
+    origin_start_pos = 0
+    for _ in range(max_new_tokens):
+        input_ids = torch.tensor(tokenizer.encode(current)).to(device)
+        start_pos = input_ids.size(0)
+        print(3333, input_ids, start_pos)
+        if not inited:
+            origin_start_pos = start_pos
+            inited = True
+        if start_pos - origin_start_pos > max_new_tokens:
+            break
+        generated = model.generate(input_ids, start_pos, max_new_tokens * 4, tokenizer.eob_token_id,
+                                   tokenizer.eos_token_id)
+        print(4444, generated)
+        current = decode_text(generated, start_pos, tokenizer)
+        if generated[0][-1] == tokenizer.eos_token_id:
+            break
+    return current
 
 
 if __name__ == "__main__":
@@ -35,12 +48,15 @@ if __name__ == "__main__":
     config = TidalConfig()
     config.vocab_size = tokenizer.vocab_size
     config.output_vocab_size = tokenizer.u8_vocab_size
+    config.dropout = 0
     model = TidalTransformer(config)
     # 最后加载模型权重
-    # model.load_state_dict(torch.load('best_model.pth'))
-    model.load_state_dict(torch.load('model_step_10000.pth'))
-    print_model_parameters(model)
+    model.load_state_dict(torch.load('best_model.pth'))
+    # model.load_state_dict(torch.load('model_step_10000.pth'))
+    model.to(device)
+    model.eval()
+    show_model_parameters(model)
     # 生成文本示例
     prompt = "5320 + 1926 ="
-    generated_text = generate_text(model, tokenizer, prompt, max_new_tokens=50)
+    generated_text = generate_text(model, tokenizer, prompt, max_new_tokens=10)
     print(f"Generated text: {generated_text}")
