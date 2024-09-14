@@ -5,7 +5,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from config import TidalConfig
-from positional_encoding import build_alibi_tensor, generate_casual_mask
+from positional_encoding import generate_casual_mask, generate_tidal_positions
 
 
 class RMSNorm(nn.Module):
@@ -108,6 +108,16 @@ class TidalTransformer(nn.Module):
         self.dropout = nn.Dropout(cfg.dropout)
         self.pad_token_id = 0
 
+        self.pos_embedding = self.create_sinusoidal_embeddings(cfg.max_seq_len, cfg.hidden_size)
+
+    def create_sinusoidal_embeddings(self, max_seq_len, d_model):
+        position = torch.arange(0, max_seq_len).unsqueeze(1)
+        div_term = torch.exp(torch.arange(0, d_model, 2) * -(math.log(10000.0) / d_model))
+        pe = torch.zeros(max_seq_len, d_model)
+        pe[:, 0::2] = torch.sin(position * div_term)
+        pe[:, 1::2] = torch.cos(position * div_term)
+        return nn.Parameter(pe.unsqueeze(0), requires_grad=False)
+
     def forward(self, input_ids, start_pos, attention_mask=None):
         batch_size, seq_len = input_ids.size()
         # Embedding
@@ -116,8 +126,15 @@ class TidalTransformer(nn.Module):
         # Generate custom attention mask
         if attention_mask is None:
             attention_mask = generate_casual_mask(batch_size, self.num_heads, seq_len).to(x.device)
+        # 添加位置编码
+        batch_size, num_heads, seq_length, _ = attention_mask.shape
+        positions = generate_tidal_positions(seq_length, start_pos).long()
+        position_embeddings = self.pos_embedding.squeeze(0)  # 移除第一个维度，现在形状为 [max_seq_len, hidden_size]
+        position_embeddings = position_embeddings[positions]  # 使用高级索引，形状变为 [batch_size, seq_len, hidden_size]
+        x = x + position_embeddings
         # Add ALIBI positional encoding
-        alibi = build_alibi_tensor(attention_mask, start_pos, x.dtype)
+        # alibi = build_alibi_tensor(attention_mask, start_pos, x.dtype)
+        alibi = None
         # Process through transformer blocks
         for layer in self.layers:
             x = layer(x, attention_mask, alibi)

@@ -5,11 +5,11 @@ from torch.utils.data import DataLoader
 
 from evaluate import decode_text
 # 假设ParquetTextDataset类在名为parquet_dataset.py的文件中
-from prepare_text import TidalTextDataset, custom_collate_fn
+from data.prepare_text import TidalTextDataset, custom_collate_fn
 from tokenizer import MixedTokenizer
 
 
-def test_parquet_text_dataset():
+def tst_parquet_text_dataset():
     # 创建一个临时的文本文件
     created = False
     test_file = "arithmetic_test.txt"
@@ -71,10 +71,27 @@ def valid_dataset():
 
 
 if __name__ == "__main__":
-    # test_parquet_text_dataset()
-    valid_dataset()
-    tokenizer = MixedTokenizer()
-    a = tokenizer.u8_decode([ 56,  59, 255,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,
-          0,   0,   0,   0,   0])
-    print(a)
+    # tst_parquet_text_dataset()
+    # valid_dataset()
+    # tokenizer = MixedTokenizer()
+    # a = tokenizer.u8_decode([ 56,  59, 255,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,
+    #       0,   0,   0,   0,   0])
+    # print(a)
     # decode_text([[13481, 2631, 638, 2155, 728, 108, 106, 252]], 5, tokenizer)
+
+    positions = torch.arange(3, 3 + 5).long()
+    print(positions)
+    indices = torch.arange(8, dtype=torch.float32).unsqueeze(0)
+    start_pos = 3
+
+    # distances = torch.where(
+    #     indices >= start_pos,
+    #     torch.sqrt(indices - start_pos),
+    #     torch.sqrt(seq_length - start_pos - 1) + torch.abs(indices - start_pos)
+    # )
+    distances = torch.where(
+        indices >= start_pos,
+        indices - start_pos,
+        8 - start_pos - 1 + torch.abs(indices - start_pos)
+    )
+    print(distances)

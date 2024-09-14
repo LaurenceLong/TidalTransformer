@@ -28,16 +28,26 @@ def example_alibi_distance_matrix(seq_length, start_pos, sqrt=False):
     return distances[:, np.newaxis] - distances
 
 
-def generate_alibi_distance_matrix(seq_length, start_pos):
+def generate_tidal_positions(seq_length, start_pos):
     device = start_pos.device  # 获取start_pos的设备
     indices = torch.arange(seq_length, dtype=torch.float32, device=device).unsqueeze(0)
     start_pos = start_pos.unsqueeze(1).float()
 
+    # distances = torch.where(
+    #     indices >= start_pos,
+    #     torch.sqrt(indices - start_pos),
+    #     torch.sqrt(seq_length - start_pos - 1) + torch.abs(indices - start_pos)
+    # )
     distances = torch.where(
         indices >= start_pos,
-        torch.sqrt(indices - start_pos),
-        torch.sqrt(seq_length - start_pos - 1) + torch.abs(indices - start_pos)
+        indices - start_pos,
+        seq_length - start_pos - 1 + torch.abs(indices - start_pos)
     )
+    return distances
+
+
+def generate_tidal_distance_matrix(seq_length, start_pos):
+    distances = generate_tidal_positions(seq_length, start_pos)
     return distances.unsqueeze(2) - distances.unsqueeze(1)
 
 
@@ -45,7 +55,7 @@ def build_alibi_tensor(attention_mask: torch.Tensor, start_pos: torch.Tensor,
                        dtype: torch.dtype) -> torch.Tensor:
     batch_size, num_heads, seq_length, _ = attention_mask.shape
     # 生成距离矩阵
-    distances = generate_alibi_distance_matrix(seq_length, start_pos)
+    distances = generate_tidal_distance_matrix(seq_length, start_pos)
     # 获取每个头的斜率
     slopes = torch.tensor(get_slopes(num_heads), dtype=dtype, device=attention_mask.device)
     # 计算alibi偏置
@@ -78,7 +88,7 @@ def test_build_alibi_tensor():
     print(1111, example_alibi_distance_matrix(seq_len, pos))
     print(1111, example_alibi_distance_matrix(seq_len, pos, True))
 
-    distances = generate_alibi_distance_matrix(seq_len, start_pos)
+    distances = generate_tidal_distance_matrix(seq_len, start_pos)
     print(2222, distances)
 
     print(3333, get_slopes(num_heads))
@@ -86,6 +96,8 @@ def test_build_alibi_tensor():
     # result = build_alibi_tensor(attention_mask, start_pos, dtype)
     # print(8888, result.shape)
     # print(9999, result)
+
+    print(4444, generate_tidal_positions(seq_len, start_pos))
 
 
 if __name__ == "__main__":
