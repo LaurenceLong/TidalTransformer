@@ -20,6 +20,8 @@ class MixedTokenizer:
         return self.utf8_tokenizer.encode(text, add_special_tokens=add_special_tokens)
 
     def u8_decode(self, tokens):
+        if not isinstance(tokens, list):
+            tokens = tokens.tolist()
         return self.utf8_tokenizer.decode(tokens)
 
     def encode(self, text, add_special_tokens=False):

@@ -41,12 +41,22 @@ def generate_training_data(num_problems):
     return sft, texts
 
 
-# 生成1000个问题的训练数据
+# 生成问题的训练数据
 json_data, text_data = generate_training_data(10 ** 5)
 
 # 将数据保存到文件
-with open("arithmetic_data.jsonl", "w", encoding="utf-8") as f1, open("arithmetic_data.text", "w", encoding="utf-8") as f2:
+with open("arithmetic_data.jsonl", "w", encoding="utf-8") as f1, open("arithmetic_data.text", "w",
+                                                                      encoding="utf-8") as f2:
     f1.writelines(json_data)
     f2.writelines(text_data)
-
 print("训练数据已生成并保存到 arithmetic_data.jsonl & arithmetic_data.text")
+
+# 生成问题的训练数据
+json_data, text_data = generate_training_data(10 ** 5 // 2)
+
+# 将数据保存到文件
+with open("arithmetic_validation.jsonl", "w", encoding="utf-8") as f1, open("arithmetic_validation.text", "w",
+                                                                            encoding="utf-8") as f2:
+    f1.writelines(json_data)
+    f2.writelines(text_data)
+print("训练数据已生成并保存到 arithmetic_validation.jsonl & arithmetic_validation.text")

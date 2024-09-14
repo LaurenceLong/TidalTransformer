@@ -25,6 +25,6 @@ class TidalConfig:
     num_epochs: int = 1
     log_interval: int = 100
     eval_interval: int = 500
-    eval_iters: int = 20
+    eval_iters: int = 50
     save_interval: int = 5000
     init_from: int = InitFrom.resume

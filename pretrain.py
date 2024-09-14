@@ -158,7 +158,7 @@ if __name__ == "__main__":
     # 这里您需要准备自己的文本数据
     cwd = os.path.dirname(os.path.abspath(__file__))
     train_ds = [os.path.join(cwd, 'data/arithmetic_data.text')]
-    val_ds = [os.path.join(cwd, 'data/arithmetic_data.text')]
+    val_ds = [os.path.join(cwd, 'data/arithmetic_validation.text')]
     train_dataset = TidalTextDataset(train_ds, tokenizer, config.max_seq_len)
     val_dataset = TidalTextDataset(val_ds, tokenizer, config.max_seq_len)
 
