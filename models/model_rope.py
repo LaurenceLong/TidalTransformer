@@ -1,6 +1,5 @@
 import math
 
-import torch
 import torch.nn as nn
 
 from config import TidalConfig
@@ -37,18 +36,14 @@ class TidalTransformer(TidalTransformerBase):
         batch_size, num_heads, seq_length, _ = attention_mask.shape
         # Generate position indices
         positions = generate_tidal_positions(seq_len, start_pos).to(x.device)
+        positions = positions.unsqueeze(1).expand(-1, self.num_heads, -1)
 
         # Generate RoPE embeddings
         freqs = self.rotary_emb(positions)
 
         # Process through transformer blocks
         for layer in self.layers:
-            x = layer(x, attention_mask)
+            x = layer(x, attention_mask, freqs=freqs)
         # Output layer
         logits = self.fc(x)
-        # 使用高效的张量操作来处理 masked_logits
-        batch_size, seq_len, vocab_size = logits.shape
-        seq_indices = torch.arange(seq_len, device=logits.device).unsqueeze(0)
-        mask = seq_indices >= start_pos.unsqueeze(1)
-        masked_logits = logits.masked_fill(~mask.unsqueeze(-1), -1e9)
-        return masked_logits
+        return logits

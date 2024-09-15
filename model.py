@@ -1,3 +1,3 @@
-from models.model_sinusoidal import TidalTransformer
+from models.model_alibi import TidalTransformer
 
 __all__ = ['TidalTransformer']

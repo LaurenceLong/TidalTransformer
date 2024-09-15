@@ -1,7 +1,5 @@
 import math
 
-import torch
-
 from config import TidalConfig
 from models.base_model import TidalTransformerBase
 from positional_encoding import generate_casual_mask, build_alibi_tensor
@@ -29,10 +27,4 @@ class TidalTransformer(TidalTransformerBase):
             x = layer(x, attention_mask=attention_mask, alibi=alibi)
         # Output layer
         logits = self.fc(x)
-        # 使用高效的张量操作来处理 masked_logits
-        batch_size, seq_len, vocab_size = logits.shape
-        seq_indices = torch.arange(seq_len, device=logits.device).unsqueeze(0)
-        mask = seq_indices >= start_pos.unsqueeze(1)
-        masked_logits = logits.masked_fill(~mask.unsqueeze(-1), -1e9)
-        return masked_logits
-
+        return logits

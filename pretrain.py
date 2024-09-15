@@ -41,7 +41,7 @@ log_filename = f"training_{timestamp}.log"
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
-device = "cpu"
+# device = "cpu"
 
 
 def train(model, train_dataloader, val_dataloader, config):
@@ -62,7 +62,6 @@ def train(model, train_dataloader, val_dataloader, config):
                 input_ids, start_pos = batch
                 # 将输入移动到设备
                 input_ids, start_pos = input_ids.to(device), start_pos.to(device)
-
                 input_ids_truncated = input_ids[:, :-1]  # 截短input_ids
                 target_ids = input_ids[:, 1:]  # 计算损失时，使用原始input_ids作为目标，但从第二个token开始
 
@@ -199,7 +198,7 @@ if __name__ == "__main__":
     train_dataset = TidalTextDataset(train_ds, tokenizer, config.max_seq_len)
     val_dataset = TidalTextDataset(val_ds, tokenizer, config.max_seq_len)
 
-    train_dataloader = DataLoader(train_dataset, batch_size=config.batch_size, shuffle=True)
+    train_dataloader = DataLoader(train_dataset, batch_size=config.batch_size, shuffle=False)
     val_dataloader = DataLoader(val_dataset, batch_size=config.batch_size)
 
     # 初始化模型

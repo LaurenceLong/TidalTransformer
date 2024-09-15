@@ -156,14 +156,9 @@ class TidalTransformerBase(nn.Module):
             x = layer(x, attention_mask)
         # Output layer
         logits = self.fc(x)
-        # 使用高效的张量操作来处理 masked_logits
-        batch_size, seq_len, vocab_size = logits.shape
-        seq_indices = torch.arange(seq_len, device=logits.device).unsqueeze(0)
-        mask = seq_indices >= start_pos.unsqueeze(1)
-        masked_logits = logits.masked_fill(~mask.unsqueeze(-1), -1e9)
-        return masked_logits
+        return logits
 
-    def compute_loss(self, logits, target_ids, start_pos):
+    def compute_loss(self, logits, targets, start_pos):
         batch_size, seq_len, vocab_size = logits.shape
         # 使用更高效的张量操作创建loss_mask
         seq_indices = torch.arange(seq_len, device=logits.device).unsqueeze(0)
@@ -171,7 +166,7 @@ class TidalTransformerBase(nn.Module):
 
         # 应用掩码
         valid_logits = logits[loss_mask].view(-1, vocab_size)
-        valid_targets = target_ids[loss_mask].view(-1)
+        valid_targets = targets[loss_mask].view(-1)
 
         # 计算交叉熵损失
         loss = F.cross_entropy(valid_logits, valid_targets, ignore_index=self.pad_token_id)
