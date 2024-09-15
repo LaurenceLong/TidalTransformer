@@ -37,7 +37,6 @@ def get_logger(filename, verbosity=1, name=None):
 timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
 log_filename = f"training_{timestamp}.log"
 
-
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
@@ -198,7 +197,7 @@ if __name__ == "__main__":
     train_dataset = TidalTextDataset(train_ds, tokenizer, config.max_seq_len)
     val_dataset = TidalTextDataset(val_ds, tokenizer, config.max_seq_len)
 
-    train_dataloader = DataLoader(train_dataset, batch_size=config.batch_size, shuffle=False)
+    train_dataloader = DataLoader(train_dataset, batch_size=config.batch_size, shuffle=True)
     val_dataloader = DataLoader(val_dataset, batch_size=config.batch_size)
 
     # 初始化模型

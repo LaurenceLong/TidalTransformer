@@ -47,7 +47,7 @@ def generate_text(model, tokenizer, prompt, max_new_tokens):
     return current
 
 
-def valid_generate(prompt="54663 + 132 =", model=None):
+def valid_generate(model_path=None):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     # device = "cpu"
     tokenizer = MixedTokenizer()
@@ -56,20 +56,25 @@ def valid_generate(prompt="54663 + 132 =", model=None):
     config.vocab_size = tokenizer.vocab_size
     config.output_vocab_size = tokenizer.u8_vocab_size
     config.dropout = 0
-    if model is None:
-        model = TidalTransformer(config)
-        # 最后加载模型权重
+    model = TidalTransformer(config)
+    # 最后加载模型权重
+    if model_path is None:
         model.load_state_dict(torch.load('best_model.pth'))
-        # model.load_state_dict(torch.load('model_step_10000.pth'))
-        model.to(device)
-        model.eval()
+    else:
+        model.load_state_dict(torch.load(model_path))
+    model.to(device)
+    model.eval()
     # show_model_parameters(model)
     # 生成文本示例
-    res_text = generate_text(model, tokenizer, prompt, max_new_tokens=10)
-    print(f"Generated text: {res_text}")
+    while True:
+        prompt = input("Input your prompt: ")
+        if len(prompt) == 0:
+            continue
+        res_text = generate_text(model, tokenizer, prompt, max_new_tokens=10)
+        print(f"Generated text: {res_text}")
 
 
-def batch_evaluate(file_name="data/arithmetic_test.txt"):
+def batch_evaluate(file_name="data/arithmetic_test.txt", model_path=None):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     # device = "cpu"
     tokenizer = MixedTokenizer()
@@ -79,8 +84,10 @@ def batch_evaluate(file_name="data/arithmetic_test.txt"):
     config.dropout = 0
     model = TidalTransformer(config)
     # 最后加载模型权重
-    model.load_state_dict(torch.load('best_model.pth'))
-    # model.load_state_dict(torch.load('model_step_10000.pth'))
+    if model_path is None:
+        model.load_state_dict(torch.load('best_model.pth'))
+    else:
+        model.load_state_dict(torch.load(model_path))
     model.to(device)
     model.eval()
 
@@ -96,8 +103,10 @@ def batch_evaluate(file_name="data/arithmetic_test.txt"):
             res_text = generate_text(model, tokenizer, prompt, 10)
             print(f"Calculate: {prompt}? ({result})")
             print(f"Generated: {res_text}\n")
+            print(f"=" * 50)
 
 
 if __name__ == "__main__":
-    # valid_generate()
-    batch_evaluate()
+    pth = '/home/laurence/work/ai/TidalTransformer/expirements/alibi/best_model.pth'
+    valid_generate(pth)
+    # batch_evaluate(model_path=pth)
