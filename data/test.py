@@ -4,28 +4,23 @@ import torch
 from torch.utils.data import DataLoader
 
 from evaluate import decode_text
-# 假设ParquetTextDataset类在名为parquet_dataset.py的文件中
 from data.prepare_text import TidalTextDataset, custom_collate_fn
 from tokenizer import MixedTokenizer
 
 
-def tst_parquet_text_dataset():
+def tst_parquet_text_dataset(tokenizer, test_file="arithmetic_test.txt"):
     # 创建一个临时的文本文件
     created = False
-    test_file = "arithmetic_test.txt"
 
-    # test_file = 'test_data.txt'
-    # texts = ["Hello world is good asdf\n", "This is a test.\n", "Python is awesome.\n"]
-    # with open(test_file, 'w', encoding='utf-8') as f:
-    #     f.writelines(texts)
-    #     created = True
+    test_file = 'test_data.txt'
+    texts = ["Hello world is good asdf\n", "This is a test.\n", "Python is awesome.\n"]
+    with open(test_file, 'w', encoding='utf-8') as f:
+        f.writelines(texts)
+        created = True
 
     # 设置参数
     max_seq_len = 20
     cache_dir = '.cache'
-
-    # 使用一个简单的tokenizer
-    tokenizer = MixedTokenizer()
 
     # 创建数据集
     dataset = TidalTextDataset(test_file, tokenizer, max_seq_len, cache_dir)
@@ -41,20 +36,18 @@ def tst_parquet_text_dataset():
     for input_ids, start_pos in dataloader:
         print(input_ids)
         print(start_pos)
+        print("==" * 50)
         assert input_ids.shape == (1, max_seq_len), f"Expected X shape (2, {max_seq_len}), got {input_ids.shape}"
 
     # 清理
-    os.remove(os.path.join(cache_dir, f"{os.path.basename(test_file)}.parquet"))
     if created:
         os.remove(test_file)
-
+        os.remove(os.path.join(cache_dir, f"{os.path.basename(test_file)}.parquet"))
     print("All tests passed!")
 
 
-def valid_dataset():
-    tokenizer = MixedTokenizer()
+def valid_dataset(tokenizer, test_file='arithmetic_test.txt'):
     cwd = os.path.dirname(os.path.abspath(__file__))
-    test_file = 'arithmetic_test.txt'
     cache_dir = '.cache'
     train_ds = [os.path.join(cwd, test_file)]
     os.remove(os.path.join(cache_dir, f"{os.path.basename(test_file)}.parquet"))
@@ -71,27 +64,12 @@ def valid_dataset():
 
 
 if __name__ == "__main__":
-    # tst_parquet_text_dataset()
-    # valid_dataset()
-    # tokenizer = MixedTokenizer()
-    # a = tokenizer.u8_decode([ 56,  59, 255,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,
-    #       0,   0,   0,   0,   0])
-    # print(a)
-    # decode_text([[13481, 2631, 638, 2155, 728, 108, 106, 252]], 5, tokenizer)
+    tknz = MixedTokenizer()
+    res = tknz.u8_decode([56, 59, 255, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+                          0, 0, 0, 0, 0])[::-1]
+    print(1111, res)
 
-    positions = torch.arange(3, 3 + 5).long()
-    print(positions)
-    indices = torch.arange(8, dtype=torch.float32).unsqueeze(0)
-    start_pos = 3
+    decode_text([[13481, 2631, 638, 2155, 728, 108, 106, 252]], 5, tknz)
 
-    # distances = torch.where(
-    #     indices >= start_pos,
-    #     torch.sqrt(indices - start_pos),
-    #     torch.sqrt(seq_length - start_pos - 1) + torch.abs(indices - start_pos)
-    # )
-    distances = torch.where(
-        indices >= start_pos,
-        indices - start_pos,
-        8 - start_pos - 1 + torch.abs(indices - start_pos)
-    )
-    print(distances)
+    # tst_parquet_text_dataset(tknz)
+    valid_dataset(tknz)

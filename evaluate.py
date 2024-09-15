@@ -69,7 +69,7 @@ def valid_generate(prompt="54663 + 132 =", model=None):
     print(f"Generated text: {res_text}")
 
 
-def batch_evaluate(file_name="data/arithmetic_data.txt"):
+def batch_evaluate(file_name="data/arithmetic_test.txt"):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     # device = "cpu"
     tokenizer = MixedTokenizer()

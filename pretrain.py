@@ -1,7 +1,7 @@
+import logging
 import math
 import os
 from datetime import datetime
-import logging
 
 import torch
 import torch.optim as optim
@@ -41,7 +41,7 @@ log_filename = f"training_{timestamp}.log"
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
-# device = "cpu"
+device = "cpu"
 
 
 def train(model, train_dataloader, val_dataloader, config):
@@ -60,12 +60,17 @@ def train(model, train_dataloader, val_dataloader, config):
         with logging_redirect_tqdm():
             for batch in tqdm(train_dataloader, desc=f"Epoch {epoch + 1}/{config.num_epochs}", leave=True):
                 input_ids, start_pos = batch
+                # 将输入移动到设备
                 input_ids, start_pos = input_ids.to(device), start_pos.to(device)
 
-                optimizer.zero_grad()
-                logits = model(input_ids, start_pos)
+                input_ids_truncated = input_ids[:, :-1]  # 截短input_ids
+                target_ids = input_ids[:, 1:]  # 计算损失时，使用原始input_ids作为目标，但从第二个token开始
 
-                loss = model.compute_loss(logits, input_ids, start_pos)
+                optimizer.zero_grad()
+                # 使用截短的input_ids
+                logits = model(input_ids_truncated, start_pos)
+                loss = model.compute_loss(logits, target_ids, start_pos)
+
                 loss.backward()
                 optimizer.step()
 
@@ -94,6 +99,21 @@ def train(model, train_dataloader, val_dataloader, config):
                         torch.save(model.state_dict(), 'best_model.pth')
                         log.info("Saved best model.")
 
+            if epoch == config.num_epochs - 1:
+                val_loss = validate(model, val_dataloader, config)
+                log.info(f"Validation loss: {val_loss:.4f}")
+
+                prompt = decode_text(input_ids, start_pos, tokenizer)
+                res_text = generate_text(model, tokenizer, prompt, max_new_tokens=10)
+                print(f"Generate for prompt: {prompt}")
+                print(res_text)
+                model.train()
+
+                if val_loss < best_val_loss:
+                    best_val_loss = val_loss
+                    torch.save(model.state_dict(), 'best_model.pth')
+                    log.info("Saved best model.")
+
             avg_train_loss = total_loss / len(train_dataloader)
             log.info(f"Epoch {epoch + 1}, Average train loss: {avg_train_loss:.4f}")
 
@@ -107,10 +127,15 @@ def validate(model, dataloader, config):
             if i >= config.eval_iters:
                 break
             input_ids, start_pos = batch
+            # 将输入移动到设备
             input_ids, start_pos = input_ids.to(device), start_pos.to(device)
 
-            logits = model(input_ids, start_pos)
-            loss = model.compute_loss(logits, input_ids, start_pos)
+            input_ids_truncated = input_ids[:, :-1]  # 截短input_ids
+            target_ids = input_ids[:, 1:]  # 计算损失时，使用原始input_ids作为目标，但从第二个token开始
+
+            # 使用截短的input_ids
+            logits = model(input_ids_truncated, start_pos)
+            loss = model.compute_loss(logits, target_ids, start_pos)
 
             total_loss += loss.item()
 
@@ -127,10 +152,16 @@ def calculate_perplexity(model, dataloader, config):
             if i >= config.eval_iters:
                 break
             input_ids, start_pos = batch
+            # 将输入移动到设备
             input_ids, start_pos = input_ids.to(device), start_pos.to(device)
 
-            logits = model(input_ids, start_pos)
-            loss = model.compute_loss(logits, input_ids, start_pos)
+            input_ids_truncated = input_ids[:, :-1]  # 截短input_ids
+            target_ids = input_ids[:, 1:]  # 计算损失时，使用原始input_ids作为目标，但从第二个token开始
+
+            # 使用截短的input_ids
+            logits = model(input_ids_truncated, start_pos)
+
+            loss = model.compute_loss(logits, target_ids, start_pos)
 
             # 计算当前批次中的有效标记数
             # 假设从 start_pos 开始到倒数第二个位置都是有效的预测位置

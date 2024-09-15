@@ -2,7 +2,7 @@ import math
 
 import torch
 
-from model import TidalTransformer
+from models.model import TidalTransformer
 
 
 # 假设我们有一个简化版的 TidalConfig
