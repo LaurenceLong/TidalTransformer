@@ -190,7 +190,6 @@ if __name__ == "__main__":
     config.output_vocab_size = tokenizer.u8_vocab_size
 
     # 准备数据
-    # 这里您需要准备自己的文本数据
     cwd = os.path.dirname(os.path.abspath(__file__))
     train_ds = [os.path.join(cwd, 'data/arithmetic_data.txt')]
     val_ds = [os.path.join(cwd, 'data/arithmetic_validation.txt')]

@@ -5,7 +5,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from config import TidalConfig
-from positional_encoding import generate_casual_mask, generate_tidal_positions
+from positional_encoding import generate_casual_mask
 
 
 def create_sinusoidal_embeddings(max_seq_len, d_model):
@@ -18,25 +18,32 @@ def create_sinusoidal_embeddings(max_seq_len, d_model):
 
 
 class RotaryEmbedding(nn.Module):
-    def __init__(self, dim):
+    def __init__(self, dim, base=10000, device=None):
         super().__init__()
-        inv_freq = 1. / (10000 ** (torch.arange(0, dim, 2).float() / dim))
-        self.register_buffer('inv_freq', inv_freq)
+        inv_freq = 1.0 / (base ** (torch.arange(0, dim, 2).float().to(device) / dim))
+        self.register_buffer("inv_freq", inv_freq)
 
     def forward(self, positions):
-        freqs = torch.einsum('b...,j->b...j', positions.float(), self.inv_freq)
-        return torch.cat((freqs, freqs), dim=-1)
+        # positions: [batch_size, seq_len] or [batch_size, num_heads, seq_len]
+        if positions.dim() == 3:
+            positions = positions[:, 0, :]  # 只使用第一个 head 的位置，因为所有 head 的位置相同
+
+        freqs = torch.einsum("bi,j->bij", positions.float(), self.inv_freq)
+        emb = torch.cat((freqs, freqs), dim=-1)
+        return emb.cos(), emb.sin()
 
 
 def rotate_half(x):
-    x1, x2 = x[..., :x.shape[-1] // 2], x[..., x.shape[-1] // 2:]
+    """Rotates half the hidden dims of the input."""
+    x1 = x[..., :x.shape[-1] // 2]
+    x2 = x[..., x.shape[-1] // 2:]
     return torch.cat((-x2, x1), dim=-1)
 
 
-def apply_rotary_pos_emb(q, k, freqs):
-    q_rot = (q * freqs.cos()) + (rotate_half(q) * freqs.sin())
-    k_rot = (k * freqs.cos()) + (rotate_half(k) * freqs.sin())
-    return q_rot, k_rot
+def apply_rotary_pos_emb(q, k, freqs_cos, freqs_sin):
+    q_embed = (q * freqs_cos) + (rotate_half(q) * freqs_sin)
+    k_embed = (k * freqs_cos) + (rotate_half(k) * freqs_sin)
+    return q_embed, k_embed
 
 
 class RMSNorm(nn.Module):
@@ -66,23 +73,22 @@ class MultiHeadAttention(nn.Module):
 
         self.dropout = nn.Dropout(dropout)
 
-    def forward(self, x, attention_mask=None, alibi=None, freqs=None):
+    def forward(self, x, attention_mask=None, alibi=None, freqs_cos=None, freqs_sin=None):
         batch_size, seq_len, _ = x.size()
 
         q = self.q_proj(x).view(batch_size, seq_len, self.num_heads, self.head_dim).transpose(1, 2)
         k = self.k_proj(x).view(batch_size, seq_len, self.num_heads, self.head_dim).transpose(1, 2)
         v = self.v_proj(x).view(batch_size, seq_len, self.num_heads, self.head_dim).transpose(1, 2)
-        if freqs is not None:
-            q, k = apply_rotary_pos_emb(q, k, freqs)
+
+        if freqs_cos is not None and freqs_sin is not None:
+            q, k = apply_rotary_pos_emb(q, k, freqs_cos, freqs_sin)
+
         scores = torch.matmul(q, k.transpose(-2, -1)) / math.sqrt(self.head_dim)
 
         if attention_mask is not None:
             scores = scores + attention_mask
         if alibi is not None:
             scores += alibi
-        if freqs is not None:
-            # todo
-            pass
 
         attn = F.softmax(scores, dim=-1)
         attn = self.dropout(attn)
@@ -113,10 +119,10 @@ class TransformerBlock(nn.Module):
         self.ffn_norm = RMSNorm(hidden_size, eps=layer_norm_eps)
         self.dropout = nn.Dropout(dropout)
 
-    def forward(self, x, attention_mask=None, alibi=None, freqs=None):
+    def forward(self, x, attention_mask=None, alibi=None, freqs_cos=None, freqs_sin=None):
         # Pre-norm for attention
         normed_x = self.attention_norm(x)
-        attention_output = self.attention(normed_x, attention_mask, alibi, freqs)
+        attention_output = self.attention(normed_x, attention_mask, alibi, freqs_cos, freqs_sin)
         x = x + self.dropout(attention_output)
 
         # Pre-norm for feed-forward

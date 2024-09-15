@@ -64,7 +64,7 @@ def valid_generate(model_path=None):
         model.load_state_dict(torch.load(model_path))
     model.to(device)
     model.eval()
-    # show_model_parameters(model)
+    show_model_parameters(model)
     # 生成文本示例
     while True:
         prompt = input("Input your prompt: ")

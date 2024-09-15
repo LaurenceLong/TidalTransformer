@@ -2,7 +2,7 @@ import math
 
 from config import TidalConfig
 from models.base_model import create_sinusoidal_embeddings, TidalTransformerBase
-from positional_encoding import generate_casual_mask, generate_tidal_positions
+from positional_encoding import generate_casual_mask, generate_tidal_rev_positions
 
 
 class TidalTransformer(TidalTransformerBase):
@@ -23,7 +23,7 @@ class TidalTransformer(TidalTransformerBase):
         # 添加位置编码
         batch_size, num_heads, seq_length, _ = attention_mask.shape
         # sinusoidal_embeddings
-        positions = generate_tidal_positions(seq_length, start_pos).long()
+        positions = generate_tidal_rev_positions(seq_length, start_pos).long()
         position_embeddings = self.pos_embedding.squeeze(0)  # 移除第一个维度，现在形状为 [max_seq_len, hidden_size]
         position_embeddings = position_embeddings[positions]  # 使用高级索引，形状变为 [batch_size, seq_len, hidden_size]
         x = x + position_embeddings

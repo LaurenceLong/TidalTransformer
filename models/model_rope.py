@@ -36,14 +36,15 @@ class TidalTransformer(TidalTransformerBase):
         batch_size, num_heads, seq_length, _ = attention_mask.shape
         # Generate position indices
         positions = generate_tidal_positions(seq_len, start_pos).to(x.device)
-        positions = positions.unsqueeze(1).expand(-1, self.num_heads, -1)
 
         # Generate RoPE embeddings
-        freqs = self.rotary_emb(positions)
+        freqs_cos, freqs_sin = self.rotary_emb(positions)
+        freqs_cos = freqs_cos.unsqueeze(1).expand(-1, self.num_heads, -1, -1)
+        freqs_sin = freqs_sin.unsqueeze(1).expand(-1, self.num_heads, -1, -1)
 
         # Process through transformer blocks
         for layer in self.layers:
-            x = layer(x, attention_mask, freqs=freqs)
+            x = layer(x, attention_mask, freqs_cos=freqs_cos, freqs_sin=freqs_sin)
         # Output layer
         logits = self.fc(x)
         return logits
