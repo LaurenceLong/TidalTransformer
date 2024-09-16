@@ -6,6 +6,7 @@ import torch.nn.functional as F
 
 from config import TidalConfig
 from positional_encoding import generate_casual_mask
+from tokenizer import MixedTokenizer
 
 
 def create_sinusoidal_embeddings(max_seq_len, d_model):
@@ -137,6 +138,7 @@ class TidalTransformerBase(nn.Module):
 
     def __init__(self, cfg: TidalConfig):
         super().__init__()
+        self.pad_token_id = 0
         self.hidden_size = cfg.hidden_size
         self.num_heads = cfg.num_heads
         self.embedding = nn.Embedding(cfg.vocab_size, cfg.hidden_size)
@@ -144,9 +146,9 @@ class TidalTransformerBase(nn.Module):
             [TransformerBlock(cfg.hidden_size, cfg.num_heads, cfg.hidden_size * 4, cfg.dropout, cfg.layer_norm_eps)
              for _ in range(cfg.num_layers)]
         )
-        self.fc = nn.Linear(cfg.hidden_size, cfg.output_vocab_size)
+        self.fc1 = nn.Linear(cfg.hidden_size, cfg.token_vocab_size)
+        self.fc2 = nn.Linear(cfg.hidden_size, cfg.char_vocab_size)
         self.dropout = nn.Dropout(cfg.dropout)
-        self.pad_token_id = 0
 
     def forward(self, input_ids, start_pos, attention_mask=None):
         batch_size, seq_len = input_ids.size()
@@ -161,24 +163,29 @@ class TidalTransformerBase(nn.Module):
         for layer in self.layers:
             x = layer(x, attention_mask)
         # Output layer
-        logits = self.fc(x)
-        return logits
+        token_logits = self.fc1(x)
+        char_logits = self.fc2(x)
+        return token_logits, char_logits
 
-    def compute_loss(self, logits, targets, start_pos):
-        batch_size, seq_len, vocab_size = logits.shape
+    def compute_loss(self, token_logits, char_logits, targets, start_pos):
+        batch_size, seq_len, vocab_size = char_logits.shape
         # 使用更高效的张量操作创建loss_mask
-        seq_indices = torch.arange(seq_len, device=logits.device).unsqueeze(0)
-        loss_mask = seq_indices >= (start_pos.unsqueeze(1) - 1)  # 减1是因为我们截短了输入
-
+        seq_indices = torch.arange(seq_len, device=char_logits.device).unsqueeze(0)
+        token_loss_mask = seq_indices < (start_pos.unsqueeze(1) - 1)  # 减1是因为我们截短了输入
+        char_loss_mask = seq_indices >= (start_pos.unsqueeze(1) - 1)
         # 应用掩码
-        valid_logits = logits[loss_mask].view(-1, vocab_size)
-        valid_targets = targets[loss_mask].view(-1)
+        valid_token_logits = token_logits[token_loss_mask].view(-1, vocab_size)
+        valid_token_targets = targets[token_loss_mask].view(-1)
+        valid_char_logits = char_logits[char_loss_mask].view(-1, vocab_size)
+        valid_char_targets = targets[char_loss_mask].view(-1)
 
         # 计算交叉熵损失
-        loss = F.cross_entropy(valid_logits, valid_targets, ignore_index=self.pad_token_id)
+        loss = (F.cross_entropy(valid_token_logits, valid_token_targets, ignore_index=self.pad_token_id)
+                + F.cross_entropy(valid_char_logits, valid_char_targets, ignore_index=self.pad_token_id))
         return loss
 
-    def generate(self, x, start_pos, max_new_chars, eob_token_id, eos_token_id, temperature=1.0, top_k=0, top_p=1.0):
+    def generate(self, x, start_pos, max_new_chars, eob_token_id, eos_token_id, temperature=1.0, top_k=0, top_p=1.0,
+                 tokenizer=None):
         self.eval()
         if x.dim() == 1:
             x = x.unsqueeze(0)  # 添加批量维度
@@ -209,6 +216,8 @@ class TidalTransformerBase(nn.Module):
 
                 probs = F.softmax(next_token_logits, dim=-1)
                 next_token = torch.multinomial(probs, num_samples=1).squeeze(1)
+                if tokenizer is not None:
+                    print("next_token", tokenizer.u8_decode(next_token), next_token)
 
                 x = torch.cat([x, next_token.unsqueeze(1)], dim=1)
 

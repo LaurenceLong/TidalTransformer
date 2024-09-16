@@ -39,7 +39,7 @@ def generate_text(model, tokenizer, prompt, max_new_tokens):
         if start_pos - origin_start_pos > max_new_tokens:
             break
         generated = model.generate(input_ids, start_pos, max_new_tokens * 4, tokenizer.eob_token_id,
-                                   tokenizer.eos_token_id)
+                                   tokenizer.eos_token_id, tokenizer=tokenizer)
         # print(4444, generated)
         current = decode_text(generated, start_pos, tokenizer)
         if generated[0][-1] == tokenizer.eos_token_id:
@@ -54,7 +54,8 @@ def valid_generate(model_path=None):
 
     config = TidalConfig()
     config.vocab_size = tokenizer.vocab_size
-    config.output_vocab_size = tokenizer.u8_vocab_size
+    config.char_vocab_size = tokenizer.u8_vocab_size
+    config.token_vocab_size = tokenizer.token_vocab_size
     config.dropout = 0
     model = TidalTransformer(config)
     # 最后加载模型权重
@@ -80,7 +81,8 @@ def batch_evaluate(file_name="data/arithmetic_test.txt", model_path=None):
     tokenizer = MixedTokenizer()
     config = TidalConfig()
     config.vocab_size = tokenizer.vocab_size
-    config.output_vocab_size = tokenizer.u8_vocab_size
+    config.char_vocab_size = tokenizer.u8_vocab_size
+    config.token_vocab_size = tokenizer.token_vocab_size
     config.dropout = 0
     model = TidalTransformer(config)
     # 最后加载模型权重
@@ -90,6 +92,7 @@ def batch_evaluate(file_name="data/arithmetic_test.txt", model_path=None):
         model.load_state_dict(torch.load(model_path))
     model.to(device)
     model.eval()
+    show_model_parameters(model)
 
     cwd = os.path.dirname(os.path.abspath(__file__))
     file_path = os.path.join(cwd, file_name)
@@ -102,11 +105,13 @@ def batch_evaluate(file_name="data/arithmetic_test.txt", model_path=None):
             result = li[idx + 1:].strip()
             res_text = generate_text(model, tokenizer, prompt, 10)
             print(f"Calculate: {prompt}? ({result})")
-            print(f"Generated: {res_text}\n")
+            print(f"Generated: {res_text}")
             print(f"=" * 50)
 
 
 if __name__ == "__main__":
-    pth = '/home/laurence/work/ai/TidalTransformer/expirements/alibi/best_model.pth'
-    valid_generate(pth)
-    # batch_evaluate(model_path=pth)
+    # pth = '/home/laurence/work/ai/TidalTransformer/expirements/alibi/best_model.pth'
+    # valid_generate(pth)
+    pth = None
+    pth = '/home/laurence/work/ai/TidalTransformer/expirements/rope/best_model.pth'
+    batch_evaluate(model_path=pth)

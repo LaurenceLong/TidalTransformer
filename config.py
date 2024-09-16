@@ -13,7 +13,8 @@ class TidalConfig:
     num_heads: int = 12
     num_layers: int = 12
     vocab_size: int = -1
-    output_vocab_size: int = -1
+    char_vocab_size: int = -1
+    token_vocab_size: int = -1
     max_seq_len: int = 128
     dropout: float = 0.1
     layer_norm_eps: float = 1e-6

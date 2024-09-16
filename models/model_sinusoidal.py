@@ -31,5 +31,5 @@ class TidalTransformer(TidalTransformerBase):
         for layer in self.layers:
             x = layer(x, attention_mask=attention_mask)
         # Output layer
-        logits = self.fc(x)
+        logits = self.fc2(x)
         return logits

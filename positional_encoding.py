@@ -34,8 +34,8 @@ def generate_tidal_positions(seq_length, start_pos):
     start_pos = start_pos.unsqueeze(1).float()
     distances = torch.where(
         indices >= start_pos,
-        seq_length - 1 - (indices - start_pos),
-        start_pos - torch.abs(indices - start_pos)
+        seq_length - start_pos - 1 - ((indices - start_pos) / (seq_length - start_pos + 0.618)),
+        seq_length - start_pos - 1 - torch.abs(indices - start_pos)
     )
     return distances
 
@@ -47,13 +47,13 @@ def generate_tidal_rev_positions(seq_length, start_pos):
 
     # distances = torch.where(
     #     indices >= start_pos,
-    #     torch.sqrt(indices - start_pos),
-    #     torch.sqrt(seq_length - start_pos - 1) + torch.abs(indices - start_pos)
+    #     indices - start_pos,
+    #     (seq_length - start_pos - 1) + torch.abs(indices - start_pos)
     # )
     distances = torch.where(
         indices >= start_pos,
-        indices - start_pos,
-        seq_length - start_pos - 1 + torch.abs(indices - start_pos)
+        (indices - start_pos) / (seq_length - start_pos + 0.382),
+        torch.abs(indices - start_pos)
     )
     return distances
 
@@ -88,11 +88,11 @@ def test_build_alibi_tensor():
     # 测试用例1：基本功能测试
     batch_size = 1
     num_heads = 1
-    seq_len = 7
+    seq_len = 9
     pos = 3
 
     input_ids = torch.ones(batch_size, seq_len)
-    start_pos = torch.tensor([pos, 4])
+    start_pos = torch.tensor([pos])
 
     attention_mask = generate_casual_mask(batch_size, num_heads, seq_len)
     print("0000\n", attention_mask)

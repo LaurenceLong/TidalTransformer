@@ -58,7 +58,7 @@ if __name__ == "__main__":
     # Your log content goes here
     cwd = os.path.dirname(os.path.abspath(__file__))
 
-    filename = 'expirements/alibi/training_20240915_150349.log'
+    filename = 'expirements/rope/training_20240916_091140.log'
     file_path = os.path.join(cwd, filename)
     file_folder = os.path.dirname(file_path)
     with open(file_path, encoding='utf-8') as fd:

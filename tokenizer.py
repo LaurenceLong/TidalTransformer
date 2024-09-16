@@ -4,13 +4,16 @@ from utf8_tokenizer import UTF8Tokenizer
 class MixedTokenizer:
     def __init__(self):
         self.utf8_tokenizer = UTF8Tokenizer()
-        self.u8_vocab_size = self.utf8_tokenizer.vocab_size + len(self.utf8_tokenizer.special_tokens)
         # import tiktoken
         # self.gpt4o_tokenizer = tiktoken.get_encoding("o200k_base")  # GPT4o
         # self.vocab_size = self.u8_vocab_size + self.gpt4o_tokenizer.n_vocab
         from transformers import GPT2TokenizerFast
         self.gpt4o_tokenizer = GPT2TokenizerFast.from_pretrained('Xenova/gpt-4o')
-        self.vocab_size = self.u8_vocab_size + len(self.gpt4o_tokenizer)
+
+        self.u8_vocab_size = self.utf8_tokenizer.vocab_size + len(self.utf8_tokenizer.special_tokens)
+        self.token_vocab_size = len(self.gpt4o_tokenizer)
+        self.vocab_size = self.u8_vocab_size + self.token_vocab_size
+
         self.eos_token_id = self.utf8_tokenizer.eos_token_id
         self.bos_token_id = self.utf8_tokenizer.bos_token_id
         self.pad_token_id = self.utf8_tokenizer.pad_token_id

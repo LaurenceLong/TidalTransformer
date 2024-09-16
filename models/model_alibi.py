@@ -26,5 +26,6 @@ class TidalTransformer(TidalTransformerBase):
         for layer in self.layers:
             x = layer(x, attention_mask=attention_mask, alibi=alibi)
         # Output layer
-        logits = self.fc(x)
-        return logits
+        token_logits = self.fc1(x)
+        char_logits = self.fc2(x)
+        return token_logits, char_logits

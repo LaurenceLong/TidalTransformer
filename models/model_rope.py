@@ -11,17 +11,6 @@ class TidalTransformer(TidalTransformerBase):
 
     def __init__(self, cfg: TidalConfig):
         super().__init__(cfg=cfg)
-        self.hidden_size = cfg.hidden_size
-        self.num_heads = cfg.num_heads
-        self.embedding = nn.Embedding(cfg.vocab_size, cfg.hidden_size)
-        self.layers = nn.ModuleList(
-            [TransformerBlock(cfg.hidden_size, cfg.num_heads, cfg.hidden_size * 4, cfg.dropout, cfg.layer_norm_eps)
-             for _ in range(cfg.num_layers)]
-        )
-        self.fc = nn.Linear(cfg.hidden_size, cfg.output_vocab_size)
-        self.dropout = nn.Dropout(cfg.dropout)
-        self.pad_token_id = 0
-
         self.rotary_emb = RotaryEmbedding(cfg.hidden_size // cfg.num_heads)
 
     def forward(self, input_ids, start_pos, attention_mask=None):
