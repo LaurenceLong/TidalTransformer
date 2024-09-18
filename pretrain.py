@@ -132,8 +132,8 @@ def validate(model, dataloader, config):
             target_ids = input_ids[:, 1:]  # 计算损失时，使用原始input_ids作为目标，但从第二个token开始
 
             # 使用截短的input_ids
-            logits = model(input_ids_truncated, start_pos)
-            loss = model.compute_loss(logits, target_ids, start_pos)
+            token_logits, char_logits = model(input_ids_truncated, start_pos)
+            loss = model.compute_loss(token_logits, char_logits, target_ids, start_pos)
 
             total_loss += loss.item()
 
@@ -157,9 +157,8 @@ def calculate_perplexity(model, dataloader, config):
             target_ids = input_ids[:, 1:]  # 计算损失时，使用原始input_ids作为目标，但从第二个token开始
 
             # 使用截短的input_ids
-            logits = model(input_ids_truncated, start_pos)
-
-            loss = model.compute_loss(logits, target_ids, start_pos)
+            token_logits, char_logits = model(input_ids_truncated, start_pos)
+            loss = model.compute_loss(token_logits, char_logits, target_ids, start_pos)
 
             # 计算当前批次中的有效标记数
             # 假设从 start_pos 开始到倒数第二个位置都是有效的预测位置
@@ -187,8 +186,7 @@ if __name__ == "__main__":
 
     # 更新配置中的词汇表大小
     config.vocab_size = tokenizer.vocab_size
-    config.char_vocab_size = tokenizer.u8_vocab_size
-    config.token_vocab_size = tokenizer.token_vocab_size
+    config.char_vocab_size = tokenizer.char_vocab_size
 
     # 准备数据
     cwd = os.path.dirname(os.path.abspath(__file__))

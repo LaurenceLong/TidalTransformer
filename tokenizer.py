@@ -6,13 +6,13 @@ class MixedTokenizer:
         self.utf8_tokenizer = UTF8Tokenizer()
         # import tiktoken
         # self.gpt4o_tokenizer = tiktoken.get_encoding("o200k_base")  # GPT4o
-        # self.vocab_size = self.u8_vocab_size + self.gpt4o_tokenizer.n_vocab
+        # self.vocab_size = self.char_vocab_size + self.gpt4o_tokenizer.n_vocab
         from transformers import GPT2TokenizerFast
         self.gpt4o_tokenizer = GPT2TokenizerFast.from_pretrained('Xenova/gpt-4o')
 
-        self.u8_vocab_size = self.utf8_tokenizer.vocab_size + len(self.utf8_tokenizer.special_tokens)
+        self.char_vocab_size = self.utf8_tokenizer.vocab_size + len(self.utf8_tokenizer.special_tokens)
         self.token_vocab_size = len(self.gpt4o_tokenizer)
-        self.vocab_size = self.u8_vocab_size + self.token_vocab_size
+        self.vocab_size = self.char_vocab_size + self.token_vocab_size
 
         self.eos_token_id = self.utf8_tokenizer.eos_token_id
         self.bos_token_id = self.utf8_tokenizer.bos_token_id
@@ -35,7 +35,7 @@ class MixedTokenizer:
         if add_special_tokens:
             encoded.append(self.bos_token_id)
         for r in raw:
-            encoded.append(r + self.u8_vocab_size)
+            encoded.append(r + self.char_vocab_size)
         if add_special_tokens:
             encoded.append(self.eos_token_id)
         return encoded
@@ -45,7 +45,7 @@ class MixedTokenizer:
         for token in tokens:
             if token in self.utf8_tokenizer.special_tokens.values():
                 continue
-            filtered_tokens.append(token - self.u8_vocab_size)
+            filtered_tokens.append(token - self.char_vocab_size)
         return self.gpt4o_tokenizer.decode(filtered_tokens)
 
 

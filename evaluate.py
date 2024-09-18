@@ -38,8 +38,9 @@ def generate_text(model, tokenizer, prompt, max_new_tokens):
             inited = True
         if start_pos - origin_start_pos > max_new_tokens:
             break
-        generated = model.generate(input_ids, start_pos, max_new_tokens * 4, tokenizer.eob_token_id,
-                                   tokenizer.eos_token_id, tokenizer=tokenizer)
+        token_shift = tokenizer.char_vocab_size
+        generated = model.generate(input_ids, start_pos, max_new_tokens * 4, tokenizer.char_vocab_size,
+                                   tokenizer.eob_token_id, tokenizer.eos_token_id, token_shift, tokenizer=tokenizer)
         # print(4444, generated)
         current = decode_text(generated, start_pos, tokenizer)
         if generated[0][-1] == tokenizer.eos_token_id:
@@ -54,8 +55,7 @@ def valid_generate(model_path=None):
 
     config = TidalConfig()
     config.vocab_size = tokenizer.vocab_size
-    config.char_vocab_size = tokenizer.u8_vocab_size
-    config.token_vocab_size = tokenizer.token_vocab_size
+    config.char_vocab_size = tokenizer.char_vocab_size
     config.dropout = 0
     model = TidalTransformer(config)
     # 最后加载模型权重
@@ -81,8 +81,7 @@ def batch_evaluate(file_name="data/arithmetic_test.txt", model_path=None):
     tokenizer = MixedTokenizer()
     config = TidalConfig()
     config.vocab_size = tokenizer.vocab_size
-    config.char_vocab_size = tokenizer.u8_vocab_size
-    config.token_vocab_size = tokenizer.token_vocab_size
+    config.char_vocab_size = tokenizer.char_vocab_size
     config.dropout = 0
     model = TidalTransformer(config)
     # 最后加载模型权重
@@ -113,5 +112,5 @@ if __name__ == "__main__":
     # pth = '/home/laurence/work/ai/TidalTransformer/expirements/alibi/best_model.pth'
     # valid_generate(pth)
     pth = None
-    pth = '/home/laurence/work/ai/TidalTransformer/expirements/rope/best_model.pth'
+    # pth = '/home/laurence/work/ai/TidalTransformer/expirements/rope/best_model.pth'
     batch_evaluate(model_path=pth)
