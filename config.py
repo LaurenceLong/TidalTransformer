@@ -23,7 +23,7 @@ class TidalConfig:
     weight_decay: float = 1e-1
     betas: tuple = (0.9, 0.95)
     batch_size: int = 32
-    num_epochs: int = 1
+    num_epochs: int = 10
     log_interval: int = 100
     eval_interval: int = 500
     eval_iters: int = 50

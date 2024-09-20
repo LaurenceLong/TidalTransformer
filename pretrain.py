@@ -66,8 +66,8 @@ def train(model, train_dataloader, val_dataloader, config):
 
                 optimizer.zero_grad()
                 # 使用截短的input_ids
-                token_logits, char_logits = model(input_ids_truncated, start_pos)
-                loss = model.compute_loss(token_logits, char_logits, target_ids, start_pos)
+                char_logits = model(input_ids_truncated, start_pos)
+                loss = model.compute_loss(char_logits, target_ids, start_pos)
 
                 loss.backward()
                 optimizer.step()
